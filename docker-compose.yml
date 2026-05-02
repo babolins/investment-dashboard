@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-}
+    restart: unless-stopped
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - CONFIG_PATH=${CONFIG_PATH:-/etc/investment-dashboard/config.yaml}
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./backend/config.yaml:/etc/investment-dashboard/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default:
+    name: ${COMPOSE_NETWORK:-investment-dashboard}

@@ -1,0 +1,94 @@
+version: "1.0"
+
+# ---------------------------------------------------------------------------
+# direct_mappings
+# ---------------------------------------------------------------------------
+# Map each ticker symbol to exactly one bucket: VTI, VXUS, or BND.
+# Symbols are case-insensitive (normalized to upper-case internally).
+#
+# Add every symbol in your portfolio here, in fractional_mappings, or
+# in exclusions.  Unmapped symbols generate a warning and are omitted
+# from the allocation chart.
+direct_mappings:
+  # -- US equity --
+  VTI: VTI       # Vanguard Total Stock Market ETF
+  VOO: VTI       # Vanguard S&P 500 ETF
+  VV: VTI        # Vanguard Large-Cap ETF
+  MGK: VTI       # Vanguard Mega Cap Growth ETF
+  SCHB: VTI      # Schwab US Broad Market ETF
+  ITOT: VTI      # iShares Core S&P Total US Market ETF
+  IVV: VTI       # iShares Core S&P 500 ETF
+  SPY: VTI       # SPDR S&P 500 ETF
+  QQQ: VTI       # Invesco QQQ (Nasdaq-100, treated as US equity)
+  FXAIX: VTI     # Fidelity 500 Index Fund (mutual fund)
+  FSKAX: VTI     # Fidelity Total Market Index Fund (mutual fund)
+
+  # -- International / foreign equity --
+  VXUS: VXUS     # Vanguard Total International Stock ETF
+  VEU: VXUS      # Vanguard FTSE All-World ex-US ETF
+  IXUS: VXUS     # iShares Core MSCI Total International ETF
+  EFA: VXUS      # iShares MSCI EAFE ETF (developed markets)
+  EEM: VXUS      # iShares MSCI Emerging Markets ETF
+  VWO: VXUS      # Vanguard FTSE Emerging Markets ETF
+  FZILX: VXUS    # Fidelity Zero International Index Fund (mutual fund)
+
+  # -- US bonds --
+  BND: BND       # Vanguard Total Bond Market ETF
+  AGG: BND       # iShares Core US Aggregate Bond ETF
+  SCHZ: BND      # Schwab US Aggregate Bond ETF
+  FBND: BND      # Fidelity Total Bond ETF
+  FXNAX: BND     # Fidelity US Bond Index Fund (mutual fund)
+
+# ---------------------------------------------------------------------------
+# fractional_mappings
+# ---------------------------------------------------------------------------
+# For securities that blend multiple exposures, specify how to split their
+# value across buckets.  Weights MUST sum to exactly 1.0 per symbol.
+fractional_mappings:
+  # XT blends US and international tech — approximate split
+  XT:
+    VTI: 0.60
+    VXUS: 0.40
+
+  # VT is the total world fund (roughly 60% US, 40% international)
+  VT:
+    VTI: 0.60
+    VXUS: 0.40
+
+  # VGIT is intermediate-term Treasuries — treat as BND proxy
+  # (listed here as an example; move to direct_mappings if you prefer 100% BND)
+  # VGIT:
+  #   BND: 1.0
+
+# ---------------------------------------------------------------------------
+# exclusions
+# ---------------------------------------------------------------------------
+# Symbols excluded from ALL allocation calculations and NOT shown in the
+# allocation chart.  Use for cash equivalents, money-market funds, etc.
+exclusions:
+  - SPAXX    # Fidelity Government Money Market Fund
+  - FDRXX    # Fidelity Government Cash Reserves
+  - FZFXX    # Fidelity Treasury Money Market Fund
+  - SPRXX    # Fidelity Prime Money Market Fund
+  - CORE     # Fidelity core position placeholder (may appear in CSV)
+  - FCASH    # Fidelity cash
+
+# ---------------------------------------------------------------------------
+# primary_symbols
+# ---------------------------------------------------------------------------
+# The ETF ticker to recommend when the rebalancer says "buy into this bucket".
+# Must have one entry per allowed bucket (VTI, VXUS, BND).
+primary_symbols:
+  VTI: VTI
+  VXUS: VXUS
+  BND: BND
+
+# ---------------------------------------------------------------------------
+# default_target_allocations
+# ---------------------------------------------------------------------------
+# Optional: pre-fills the rebalance form in the UI.  Weights are in percent
+# (0-100) and must sum to 100.  Remove or comment out to leave the form blank.
+default_target_allocations:
+  VTI: 60.0
+  VXUS: 30.0
+  BND: 10.0

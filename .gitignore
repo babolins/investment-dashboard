@@ -1,0 +1,57 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.whl
+.venv/
+venv/
+.uv/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Frontend / Node
+node_modules/
+frontend/dist/
+.pnpm-store/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.vscode/settings.json
+.idea/
+
+# VS Code workspace files
+*.code-workspace
+
+# Docker
+*.pid
+
+# Database (no persistence in v1, but guard against accidental creation)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded CSV files (should not be committed)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# User configuration — copy from config.example.yaml and keep local
+backend/config.yaml
