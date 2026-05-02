@@ -20,3 +20,4 @@ services:
 networks:
   default:
     name: ${COMPOSE_NETWORK:-investment-dashboard}
+    external: true

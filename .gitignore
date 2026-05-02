@@ -55,3 +55,4 @@ backend/uploads/*
 
 # User configuration — copy from config.example.yaml and keep local
 backend/config.yaml
+etc-investment-dashboard/

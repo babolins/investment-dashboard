@@ -59,9 +59,11 @@ uv run fastapi dev app/main.py
 
 The API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
-### Run the frontend
+No config setup is needed for a quick test — if no `config.yaml` is found, the backend falls back to `config.example.yaml` automatically.
 
-In a separate terminal:
+### Frontend development (optional)
+
+In production the React app is compiled into the Docker image and served directly by FastAPI. For local frontend development with hot reload, run the Vite dev server in a separate terminal:
 
 ```bash
 cd frontend
@@ -69,7 +71,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs at `http://localhost:5173` and proxies `/api` requests to the backend automatically.
+The dev server runs at `http://localhost:5173` and proxies `/api` requests to the backend at `localhost:8000` automatically.
 
 ### Run backend tests
 
@@ -92,31 +94,21 @@ cd frontend && npm run build  # TypeScript type-check included
 ### Build and start
 
 ```bash
-# Requires backend/config.yaml — copy from the example if needed
-cp backend/config.example.yaml backend/config.yaml
-
 docker compose up -d --build
 ```
 
-The container serves both the API and the built React frontend on a single port (default `8000`). There is no separate nginx container.
+The container serves both the API and the built React frontend on a single port. There is no separate nginx container.
+
+On first start, the entrypoint script automatically initialises `./etc-investment-dashboard/config.yaml` from the bundled example config if the file does not already exist. Edit that file to customise your security mappings; it is preserved across container restarts and image updates.
 
 ### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `8000` | Host port to bind |
 | `CONFIG_PATH` | `/etc/investment-dashboard/config.yaml` | Path to config inside the container |
 | `APP_ENV` | `production` | Application environment |
 | `VITE_API_URL` | _(empty)_ | Set at build time if the API is on a different host; leave empty for same-origin `/api` routing |
 | `COMPOSE_NETWORK` | `investment-dashboard` | Docker network name |
-
-### Reverse proxy (optional)
-
-The container exposes a single HTTP service on `PORT`. Point a reverse proxy (e.g. Nginx Proxy Manager) directly at it for TLS termination:
-
-```
-app.your-domain  →  app:8000
-```
 
 ### Stop
 
