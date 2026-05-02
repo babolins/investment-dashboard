@@ -30,8 +30,12 @@ COPY backend/config.example.yaml ./config.example.yaml
 # Copy built frontend assets
 COPY --from=frontend-builder /build/dist ./static/
 
+COPY backend/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
