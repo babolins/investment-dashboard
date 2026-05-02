@@ -50,11 +50,6 @@ app.include_router(rebalance.router, prefix="/api")
 app.include_router(config_router.router, prefix="/api")
 
 
-@app.get("/health", tags=["meta"])
-def health_check() -> dict:
-    return {"status": "ok"}
-
-
 # ---------------------------------------------------------------------------
 # Static frontend — only active when the built assets are present (production).
 # The catch-all route serves index.html for client-side SPA routing.

@@ -10,12 +10,7 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - CONFIG_PATH=${CONFIG_PATH:-/etc/investment-dashboard/config.yaml}
     volumes:
-      - ./etc-investment-dashboard:/etc/investment-dashboard
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      - ${CONFIG_VOLUME:-./etc-investment-dashboard}:/etc/investment-dashboard
 
 networks:
   default:
