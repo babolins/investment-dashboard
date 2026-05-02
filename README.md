@@ -106,6 +106,7 @@ On first start, the entrypoint script automatically initialises `./etc-investmen
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CONFIG_PATH` | `/etc/investment-dashboard/config.yaml` | Path to config inside the container |
+| `CONFIG_VOLUME` | `./etc-investment-dashboard` | Path to the config volume on the local filesystem |
 | `APP_ENV` | `production` | Application environment |
 | `VITE_API_URL` | _(empty)_ | Set at build time if the API is on a different host; leave empty for same-origin `/api` routing |
 | `COMPOSE_NETWORK` | `investment-dashboard` | Docker network name |
