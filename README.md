@@ -13,14 +13,6 @@ A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV e
 - Nest categories inside each other (e.g. Stocks → US / International) by drag & drop or a "Move to" menu; securities are assigned to the innermost categories
 - Rebalance calculator: enter the investment amount and each level's split as "% of parent" (e.g. Stocks 60% → US 70%) — the app works out each category's share of the portfolio (42%) → buy guidance in dollars and % of investment
 
-## Non-goals (v1)
-
-- No historical snapshot storage (the config file is the only persisted state)
-- No brokerage order execution
-- No live price fetching
-- No multi-user authentication
-- No tax optimization
-
 ## Stack
 
 | Layer      | Technology                                                                          |
@@ -33,21 +25,61 @@ A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV e
 
 ## Quarterly Workflow
 
-1. Export portfolio CSV from Fidelity ("Positions" → "Download").
-2. Upload CSV on the dashboard.
-3. Review the holdings table and allocation chart.
-4. Enter your intended investment amount and target allocation weights.
-5. Follow the buy guidance for VTI / VXUS / BND.
+1. In Fidelity, go to **Accounts & Trade → Portfolio → Positions** and click **Download** to export a CSV.
+2. Drop the CSV on the **Upload Portfolio** card (or click it to browse).
+3. Review the **Holdings** table and the **Asset Allocation** chart. Any holding marked unassigned (a new purchase, say) needs a category: click its category pill and assign it.
+4. In the **Rebalance Calculator**, enter the **Investment Amount** and check the targets. Each category's target is a **% of parent**, and each level must add up to 100%. The form starts from each category's default target. Changes you make here last for the session only; to change a default, edit the category under **Categories**.
+5. Click **Calculate Buy Guidance**. Buy the amount shown for each category's buy symbol. **Post-trade Allocation** shows where the portfolio will end up.
 
 ---
 
+## Getting started (development)
+
+### 1. Install the prerequisites
+
+| Tool                                                       | Version                        | Used for                                                                              |
+| ---------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| [Git](https://git-scm.com/)                                | any                            | Cloning the repo                                                                      |
+| [uv](https://docs.astral.sh/uv/)                           | ≥ 0.4                          | Backend dependencies and Python. uv downloads Python 3.12 itself if you don't have it |
+| [Node.js](https://nodejs.org/) with npm                    | ≥ 24.15 (see [.nvmrc](.nvmrc)) | Frontend dependencies, dev server and build                                           |
+| [Docker](https://docs.docker.com/get-docker/) with Compose | any                            | Deployment only; not needed for development                                           |
+
+On macOS with [Homebrew](https://brew.sh/): `brew install uv node@24`. On other platforms, use the uv installer (`curl -LsSf https://astral.sh/uv/install.sh | sh`) and install Node 24 from [nodejs.org](https://nodejs.org/) or with a version manager. With [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm), run `nvm use` / `fnm use` in the repo root to pick up the version in `.nvmrc`.
+
+### 2. Clone and install dependencies
+
+```bash
+git clone https://github.com/babolins/investment-dashboard.git
+cd investment-dashboard
+(cd backend && uv sync)      # creates backend/.venv (installs Python 3.12 if needed)
+(cd frontend && npm ci)      # installs frontend/node_modules from the lockfile
+```
+
+### 3. Run it
+
+```bash
+./run.sh                     # open http://localhost:5173
+```
+
+With no `config.yaml` of your own, the app starts from the bundled example categories. See [Configuration](#configuration) below.
+
+### 4. Build the frontend
+
+```bash
+cd frontend && npm run build # type-checks, then writes the production bundle to frontend/dist/
+```
+
+The backend serves `frontend/dist/` automatically when it exists, so after a build `cd backend && uv run uvicorn app.main:app` serves the whole app on http://localhost:8000. `./run.sh prod` does both steps for you.
+
+### 5. Before you push
+
+Run the [checks](#checks) below. CI runs the same ones.
+
+### Dev container (optional)
+
+The repo includes a VS Code [dev container](.devcontainer/) that ships uv, Python 3.12 and Node 24, and installs both sets of dependencies when the container is created. In VS Code, run **Dev Containers: Reopen in Container**, then go straight to step 3. The container is set up as a sandbox for Claude Code: outbound network is limited to an allowlist and pushing to GitHub is blocked, so push from your host.
+
 ## Development
-
-### Prerequisites
-
-- [uv](https://github.com/astral-sh/uv) ≥ 0.4
-- Node.js ≥ 20.19 and npm ≥ 10
-- Docker + Docker Compose (for deployment)
 
 ### Configuration
 
