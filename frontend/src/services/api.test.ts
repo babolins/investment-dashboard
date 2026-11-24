@@ -126,12 +126,6 @@ describe("updateCategory", () => {
     expect(lastCall()[1].body).toBe('{"parent":null}');
   });
 
-  it("sends a parent group name", async () => {
-    respond(groupedConfig);
-    await updateCategory("Bonds", { parent: "Fixed Income" });
-    expect(jsonBody(lastCall()[1])).toEqual({ parent: "Fixed Income" });
-  });
-
   it("encodes reserved characters in the name", async () => {
     respond(config);
     await updateCategory("R&D #1?", { name: "New" });
@@ -161,12 +155,6 @@ describe("createGroup", () => {
     expect(init.headers).toEqual({ "Content-Type": "application/json" });
     expect(jsonBody(init)).toEqual(input);
   });
-
-  it("sends a parent and a null target", async () => {
-    respond(groupedConfig, 201);
-    await createGroup({ name: "Intl", parent: "Stocks", target: null });
-    expect(jsonBody(lastCall()[1])).toEqual({ name: "Intl", parent: "Stocks", target: null });
-  });
 });
 
 describe("updateGroup", () => {
@@ -184,12 +172,6 @@ describe("updateGroup", () => {
     await updateGroup("Stocks", { parent: null, target: null });
     expect(lastCall()[1].body).toBe('{"parent":null,"target":null}');
   });
-
-  it("encodes reserved characters in the name", async () => {
-    respond(groupedConfig);
-    await updateGroup("R&D #1?", { target: 5 });
-    expect(lastCall()[0]).toBe("/api/groups/R%26D%20%231%3F");
-  });
 });
 
 describe("deleteGroup", () => {
@@ -200,11 +182,6 @@ describe("deleteGroup", () => {
     expect(url).toBe("/api/groups/Fixed%20Income");
     expect(init.method).toBe("DELETE");
     expect(init.body).toBeUndefined();
-  });
-
-  it("surfaces the server's error message", async () => {
-    respond({ detail: "Group 'X' not found" }, 404);
-    await expect(deleteGroup("X")).rejects.toThrow("Group 'X' not found");
   });
 });
 

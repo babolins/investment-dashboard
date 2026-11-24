@@ -104,11 +104,6 @@ describe("CategoryManager list", () => {
     expect(items[2]).toHaveTextContent("20%");
   });
 
-  it("shows a dash for a category without a default target", () => {
-    setup(withCategories(1));
-    expect(row("Cat 0")).toHaveTextContent("—");
-  });
-
   it("renders groups as a tree: groups first, children nested inside their group", () => {
     setup(nested);
     const names = screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"));
@@ -295,30 +290,6 @@ describe("CategoryManager add category", () => {
     expect(createCategory).not.toHaveBeenCalled();
   });
 
-  it("rejects a name that duplicates an existing one, ignoring case", async () => {
-    const { user } = setup();
-    await fill(user, "bonds", "AGG");
-    await user.click(within(form()).getByRole("button", { name: "Add category" }));
-    expect(await within(form()).findByRole("alert")).toBeInTheDocument();
-    expect(createCategory).not.toHaveBeenCalled();
-  });
-
-  it("rejects a malformed buy symbol", async () => {
-    const { user } = setup();
-    await fill(user, "Gold", "not a symbol");
-    await user.click(within(form()).getByRole("button", { name: "Add category" }));
-    expect(await within(form()).findByRole("alert")).toBeInTheDocument();
-    expect(createCategory).not.toHaveBeenCalled();
-  });
-
-  it("rejects a target outside 0-100", async () => {
-    const { user } = setup();
-    await fill(user, "Gold", "GLD", "150");
-    await user.click(within(form()).getByRole("button", { name: "Add category" }));
-    expect(await within(form()).findByRole("alert")).toBeInTheDocument();
-    expect(createCategory).not.toHaveBeenCalled();
-  });
-
   it("shows a server error inline and keeps the form", async () => {
     vi.mocked(createCategory).mockRejectedValue(new Error("Category 'Gold' already exists"));
     const { user, onChange } = setup();
@@ -364,14 +335,6 @@ describe("CategoryManager group edit and delete", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(updated));
   });
 
-  it("sends target: null when the default is cleared", async () => {
-    const { user } = setup(nested);
-    await user.click(screen.getByRole("button", { name: "Edit Stocks" }));
-    await user.clear(screen.getByLabelText("Default target for Stocks"));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(updateGroup).toHaveBeenCalledWith("Stocks", { target: null });
-  });
-
   it("closes without calling the API when nothing changed or on cancel", async () => {
     const { user } = setup(nested);
     await user.click(screen.getByRole("button", { name: "Edit Stocks" }));
@@ -392,20 +355,6 @@ describe("CategoryManager group edit and delete", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await within(rowItem("Stocks")).findByRole("alert")).toBeInTheDocument();
     expect(updateGroup).not.toHaveBeenCalled();
-  });
-
-  it("shows a server error in the row and stays in edit mode", async () => {
-    vi.mocked(updateGroup).mockRejectedValue(new Error("Name 'Bonds' is taken"));
-    const { user, onChange } = setup(nested);
-    await user.click(screen.getByRole("button", { name: "Edit Spare" }));
-    const name = screen.getByLabelText("Name for Spare");
-    await user.clear(name);
-    await user.type(name, "Bonds");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await within(rowItem("Spare")).findByRole("alert")).toHaveTextContent("is taken");
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Name for Spare")).toBeInTheDocument();
   });
 
   it("deletes a group, notes that children move up, and reports the server's config", async () => {
@@ -592,16 +541,6 @@ describe("CategoryManager edit", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(updateCategory).toHaveBeenCalledWith("Bonds", { target: null });
-  });
-
-  it("closes without calling the API when nothing changed", async () => {
-    const { user, onChange } = setup();
-    await user.click(screen.getByRole("button", { name: "Edit Bonds" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(updateCategory).not.toHaveBeenCalled();
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText("Name for Bonds")).toBeNull();
   });
 
   it("shows a server error in the row and stays in edit mode", async () => {

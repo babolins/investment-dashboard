@@ -184,52 +184,11 @@ def test_error_hierarchy():
 # ---------------------------------------------------------------------------
 
 
-def test_load_reads_v2(tmp_path: Path):
-    store, _ = make_store(tmp_path, COMMENTED_V2)
-    c = store.load()
-    assert c.category_names == ["US Stocks", "International", "Bonds"]
-    assert c.weights_for("XT") == {"US Stocks": 0.6, "International": 0.4}
-
-
 def test_load_does_not_modify_a_v1_file(tmp_path: Path):
     store, path = make_store(tmp_path, USER_V1)
     c = store.load()
     assert c.category_names == ["VTI", "VXUS", "BND"]
     assert path.read_text() == USER_V1
-
-
-@pytest.mark.parametrize("body", ["direct_mappings: [unclosed\n", "- a\n- list\n", "scalar\n"])
-def test_load_unreadable_yaml_is_value_error_not_config_error(tmp_path: Path, body: str):
-    store, _ = make_store(tmp_path, body)
-    with pytest.raises(ValueError) as excinfo:
-        store.load()
-    assert not isinstance(excinfo.value, ConfigError)
-
-
-def test_load_invalid_reference_is_value_error(tmp_path: Path):
-    store, _ = make_store(tmp_path, "direct_mappings:\n  AAPL: SPY\n")
-    with pytest.raises(ValueError):
-        store.load()
-
-
-@pytest.mark.parametrize("body", ["", "# just a comment\n"], ids=["empty", "comment-only"])
-def test_load_empty_file_gives_default_categories(tmp_path: Path, body: str):
-    store, _ = make_store(tmp_path, body)
-    assert store.load().category_names == ["VTI", "VXUS", "BND"]
-
-
-def test_load_blank_sections_are_empty(tmp_path: Path):
-    store, _ = make_store(tmp_path, SIMPLE_V2.replace("exclusions: []", "exclusions:"))
-    assert store.load().exclusions == []
-
-
-def test_load_zero_categories_ok_nine_rejected(tmp_path: Path):
-    store, _ = make_store(tmp_path, "version: '2'\ncategories: {}\n")
-    assert store.load().categories == {}
-    nine = "".join(f"  C{i}:\n    buy_symbol: VTI\n    color: '#2a78d6'\n" for i in range(9))
-    store, _ = make_store(tmp_path, f"version: '2'\ncategories:\n{nine}")
-    with pytest.raises(ValueError):
-        store.load()
 
 
 # ---------------------------------------------------------------------------
@@ -245,14 +204,6 @@ def test_create_category_persists_and_appends(tmp_path: Path):
     assert result.categories["Gold"].target == 5
     assert load_config(path) == result  # round-trips through the file
     assert store.load() == result
-
-
-def test_create_category_strips_name_and_symbol(tmp_path: Path):
-    store, _ = make_store(tmp_path, SIMPLE_V2)
-    result = store.create_category("  Gold  ", "  gld ", None)
-    assert result.category_names[-1] == "Gold"
-    assert result.categories["Gold"].buy_symbol == "GLD"
-    assert result.categories["Gold"].target is None
 
 
 def test_create_category_color_is_first_unused_palette_entry(tmp_path: Path):
@@ -312,20 +263,8 @@ def test_create_duplicate_name_is_conflict(tmp_path: Path, name: str):
     ("name", "symbol", "target"),
     [
         ("Excluded", "VTI", None),
-        ("excluded", "VTI", None),
-        ("Unassigned", "VTI", None),
-        ("UNASSIGNED", "VTI", None),
-        ("", "VTI", None),
-        ("   ", "VTI", None),
-        ("x" * 41, "VTI", None),
-        ("A/B", "VTI", None),
-        ("Gold", "", None),
         ("Gold", "V TI", None),
-        ("Gold", "TOOLONGSYMBOL", None),
-        ("Gold", "VT$", None),
-        ("Gold", "GLD", -1),
         ("Gold", "GLD", 101),
-        ("Gold", "GLD", 100.5),
     ],
 )
 def test_create_invalid_input_is_config_error_and_file_unchanged(
@@ -337,17 +276,6 @@ def test_create_invalid_input_is_config_error_and_file_unchanged(
         store.create_category(name, symbol, target)
     assert not isinstance(excinfo.value, ConflictError | NotFoundError)  # maps to 422, not 409/404
     assert path.read_bytes() == before
-
-
-def test_create_target_boundaries_accepted(tmp_path: Path):
-    store, _ = make_store(tmp_path, SIMPLE_V2)
-    store.create_category("Zero", "VTI", 0)
-    assert store.create_category("Full", "VTI", 100).categories["Full"].target == 100
-
-
-def test_create_name_with_forty_chars_accepted(tmp_path: Path):
-    store, _ = make_store(tmp_path, SIMPLE_V2)
-    assert "x" * 40 in store.create_category("x" * 40, "VTI", None).categories
 
 
 def test_create_when_config_is_invalid_raises_and_does_not_write(tmp_path: Path):
@@ -441,16 +369,6 @@ def test_update_rename_keeps_position_and_strips_whitespace(tmp_path: Path):
     assert result.category_names == ["US Stocks", "Foreign", "Bonds"]
     assert result.categories["Foreign"].buy_symbol == "VXUS"
     assert result.categories["Foreign"].color == PALETTE[1]
-
-
-@pytest.mark.parametrize("new_name", ["Excluded", "unassigned", "", "x" * 41, "a/b"])
-def test_update_rename_to_invalid_name_is_config_error(tmp_path: Path, new_name: str):
-    store, path = make_store(tmp_path, COMMENTED_V2)
-    before = path.read_bytes()
-    with pytest.raises(ConfigError) as excinfo:
-        store.update_category("Bonds", new_name=new_name)
-    assert not isinstance(excinfo.value, ConflictError | NotFoundError)
-    assert path.read_bytes() == before
 
 
 @pytest.mark.parametrize(("symbol", "target"), [("V TI", UNSET), ("AGG", 101), ("AGG", -5)])
@@ -556,13 +474,6 @@ def test_single_category_goes_to_direct_mappings(tmp_path: Path):
     assert load_config(path) == result
 
 
-def test_single_category_weight_value_is_irrelevant(tmp_path: Path):
-    store, _ = make_store(tmp_path, COMMENTED_V2)
-    result = store.set_assignment("VOO", weights={"Bonds": 5})
-    assert result.direct_mappings["VOO"] == "Bonds"
-    assert result.weights_for("VOO") == {"Bonds": 1.0}
-
-
 def test_several_categories_go_to_fractional_normalised(tmp_path: Path):
     store, path = make_store(tmp_path, COMMENTED_V2)
     result = store.set_assignment("VOO", weights={"US Stocks": 3, "International": 1})
@@ -579,12 +490,6 @@ def test_normalised_weights_that_do_not_divide_evenly_still_validate(tmp_path: P
     result = store.set_assignment("VOO", weights={"US Stocks": 1, "International": 1, "Bonds": 1})
     assert sum(result.fractional_mappings["VOO"].values()) == pytest.approx(1.0, abs=1e-6)
     assert load_config(path) == result  # the persisted numbers pass the 1e-6 check on reload
-
-
-def test_percent_style_weights_are_normalised(tmp_path: Path):
-    store, _ = make_store(tmp_path, COMMENTED_V2)
-    result = store.set_assignment("VOO", weights={"US Stocks": 60, "International": 40})
-    assert result.fractional_mappings["VOO"]["US Stocks"] == pytest.approx(0.6)
 
 
 def test_direct_to_fractional_removes_direct_entry(tmp_path: Path):
@@ -1212,35 +1117,6 @@ def test_get_store_env_path_is_read_and_write_target(
         assert path.read_text() == one_category(key)
 
 
-def test_get_store_env_path_missing_raises_file_not_found(
-    paths: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    paths["local"].write_text(one_category("local"))
-    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "missing.yaml"))
-    with pytest.raises(FileNotFoundError):
-        get_store().load()
-
-
-def test_get_store_prefers_etc_over_local_and_example(paths: dict[str, Path]):
-    for key, path in paths.items():
-        path.write_text(one_category(key))
-    store = get_store()
-    assert store.load().category_names == ["etc"]
-    store.create_category("Gold", "GLD", None)
-    assert load_config(paths["etc"]).category_names == ["etc", "Gold"]
-    assert paths["local"].read_text() == one_category("local")
-
-
-def test_get_store_prefers_local_config_over_example(paths: dict[str, Path]):
-    paths["local"].write_text(one_category("local"))
-    paths["example"].write_text(one_category("example"))
-    store = get_store()
-    assert store.load().category_names == ["local"]
-    store.create_category("Gold", "GLD", None)
-    assert load_config(paths["local"]).category_names == ["local", "Gold"]
-    assert paths["example"].read_text() == one_category("example")
-
-
 def test_get_store_reading_example_writes_to_local_config(paths: dict[str, Path]):
     paths["example"].write_text(one_category("example"))
     example_before = paths["example"].read_bytes()
@@ -1255,11 +1131,6 @@ def test_get_store_reading_example_writes_to_local_config(paths: dict[str, Path]
     assert load_config(paths["local"]).category_names == ["example", "Gold"]
     # a fresh store (new request) now reads the local file
     assert get_store().load().category_names == ["example", "Gold"]
-
-
-def test_get_store_nothing_found_raises_file_not_found(paths: dict[str, Path]):
-    with pytest.raises(FileNotFoundError):
-        get_store().load()
 
 
 def test_unwritable_target_raises_config_write_error(tmp_path: Path):

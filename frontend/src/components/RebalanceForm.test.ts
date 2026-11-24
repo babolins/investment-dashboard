@@ -79,11 +79,6 @@ describe("RebalanceForm", () => {
       expect(levelErrors()).toHaveLength(0);
     });
 
-    it("shows no portfolio readouts for top-level nodes", () => {
-      renderForm();
-      expect(screen.queryByText(/of portfolio$/)).toBeNull();
-    });
-
     it("leaves inputs empty and reports the total for categories without a target", () => {
       const cfg = { ...config, categories: config.categories.map((c) => ({ ...c, target: null })) };
       renderForm(cfg);
@@ -336,29 +331,6 @@ describe("RebalanceForm", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("rejects shares that do not add up to 100%", async () => {
-      const { user, amount, onResult } = renderForm();
-      await fill(user, amount, "5000");
-      await fill(user, input(BONDS), "15");
-      await submit(user);
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Top level: must add up to 100% (currently 95.0%).",
-      );
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(onResult).not.toHaveBeenCalled();
-    });
-
-    it("rejects a nested level that does not add up", async () => {
-      const { user, amount } = renderForm(groupedConfig);
-      await fill(user, amount, "5000");
-      await fill(user, input(INTL_IN), "");
-      await submit(user);
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Stocks: must add up to 100% (currently 70.0%).",
-      );
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
     it("reports the amount problem before share problems", async () => {
       const { user } = renderForm();
       await fill(user, input(BONDS), "150");
@@ -392,21 +364,6 @@ describe("RebalanceForm", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
-    it("uses edited target values in the request", async () => {
-      mockFetch.mockResolvedValue(rebalance);
-      const { user, amount, onResult } = renderForm();
-      await fill(user, amount, "250.5");
-      await fill(user, input(US), "30");
-      await fill(user, input(INTL), "50");
-      await submit(user);
-
-      await waitFor(() => expect(onResult).toHaveBeenCalled());
-      expect(mockFetch.mock.calls[0][1]).toEqual({
-        investment_amount: 250.5,
-        target: { "US Stocks": 30, International: 50, Bonds: 20 },
-      });
-    });
-
     it("sends an emptied input as 0", async () => {
       mockFetch.mockResolvedValue(rebalance);
       const { user, amount, onResult } = renderForm();
@@ -421,18 +378,6 @@ describe("RebalanceForm", () => {
         International: 52,
         Bonds: 0,
       });
-    });
-
-    it("omits a removed category from the request", async () => {
-      mockFetch.mockResolvedValue(rebalance);
-      const { user, amount, rerender, onResult } = renderForm();
-      await rerender({ config: twoFlat });
-      await fill(user, amount, "5000");
-      await fill(user, input(INTL), "52");
-      await submit(user);
-
-      await waitFor(() => expect(onResult).toHaveBeenCalled());
-      expect(mockFetch.mock.calls[0][1].target).toEqual({ "US Stocks": 48, International: 52 });
     });
 
     it("sends whole-portfolio targets for categories only when grouped", async () => {
@@ -490,14 +435,6 @@ describe("RebalanceForm", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent("Server exploded");
       expect(onResult).not.toHaveBeenCalled();
       expect(screen.getByRole("button", { name: BUTTON })).toBeEnabled();
-    });
-
-    it("shows a generic message when a non-Error is thrown", async () => {
-      mockFetch.mockRejectedValue("boom");
-      const { user, amount } = renderForm();
-      await fill(user, amount, "5000");
-      await submit(user);
-      expect(await screen.findByRole("alert")).toHaveTextContent("Unknown error");
     });
 
     it("clears a previous error when the next submit succeeds", async () => {

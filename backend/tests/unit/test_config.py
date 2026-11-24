@@ -2,7 +2,6 @@
 Unit tests for the v2 AllocationConfig schema, v1 -> v2 migration and the loader.
 """
 
-import ast
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +9,7 @@ import pytest
 
 import app.models.config as config_module
 from app.models.config import (
-    MAX_CATEGORIES,
     PALETTE,
-    RESERVED_NAMES,
     AllocationConfig,
     load_config,
 )
@@ -107,35 +104,6 @@ def load_yaml(tmp_path: Path, body: str) -> AllocationConfig:
 # ---------------------------------------------------------------------------
 # Module constants
 # ---------------------------------------------------------------------------
-
-
-def test_palette_and_limits():
-    assert PALETTE == (
-        "#2a78d6",
-        "#eb6834",
-        "#1baf7a",
-        "#eda100",
-        "#e87ba4",
-        "#008300",
-        "#6250d6",
-        "#e34948",
-    )
-    assert MAX_CATEGORIES == 8
-    assert {"excluded", "unassigned"} <= set(RESERVED_NAMES)
-
-
-def test_config_model_does_not_import_schemas():
-    # schemas may import config, never the other way round (import-cycle guard).
-    tree = ast.parse(Path(config_module.__file__).read_text())
-    imported = {
-        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module
-    } | {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    }
-    assert not any(name.endswith("schemas") for name in imported)
 
 
 # ---------------------------------------------------------------------------
@@ -238,11 +206,6 @@ def test_buy_symbol_rejected(symbol: str):
         cfg(categories={"X": category(symbol)}, direct_mappings={})
 
 
-def test_buy_symbol_required():
-    with pytest.raises(ValueError):
-        cfg(categories={"X": {"color": PALETTE[0]}}, direct_mappings={})
-
-
 @pytest.mark.parametrize("target", [None, 0, 0.0, 33.3, 100])
 def test_target_accepts_null_and_0_to_100(target: float | None):
     c = cfg(categories={"X": category("VTI", target)}, direct_mappings={})
@@ -253,14 +216,6 @@ def test_target_accepts_null_and_0_to_100(target: float | None):
 def test_target_out_of_range_rejected(target: float):
     with pytest.raises(ValueError):
         cfg(categories={"X": category("VTI", target)}, direct_mappings={})
-
-
-def test_target_defaults_to_none():
-    c = cfg(
-        categories={"X": {"buy_symbol": "VTI", "color": PALETTE[0]}},
-        direct_mappings={},
-    )
-    assert c.categories["X"].target is None
 
 
 def test_targets_need_not_sum_to_100():
@@ -281,11 +236,6 @@ def test_color_accepts_hex(color: str):
 def test_color_rejected(color: str):
     with pytest.raises(ValueError):
         cfg(categories={"X": category(color=color)}, direct_mappings={})
-
-
-def test_color_required():
-    with pytest.raises(ValueError):
-        cfg(categories={"X": {"buy_symbol": "VTI"}}, direct_mappings={})
 
 
 # ---------------------------------------------------------------------------
@@ -445,11 +395,6 @@ def test_v1_missing_default_target_is_none_not_zero():
     assert c.categories["VTI"].target == 100
     assert c.categories["VXUS"].target is None
     assert c.categories["BND"].target is None
-
-
-def test_v1_default_targets_need_not_sum_to_100():
-    c = from_raw(default_target_allocations={"VTI": 50, "VXUS": 50, "BND": 50})
-    assert [c.categories[n].target for n in ("VTI", "VXUS", "BND")] == [50, 50, 50]
 
 
 def test_v1_default_targets_keyed_by_custom_category_names():

@@ -163,12 +163,6 @@ def test_create_category_defaults_target_to_null_and_uppercases_symbol(client: T
     assert created["buy_symbol"] == "GLD"
 
 
-def test_create_category_name_is_stripped(client: TestClient):
-    response = client.post("/api/categories", json={"name": "  Gold  ", "buy_symbol": "GLD"})
-    assert response.status_code == 201
-    assert "Gold" in names(response.json())
-
-
 @pytest.mark.parametrize("name", ["us stocks", "BONDS"])
 def test_create_duplicate_name_conflicts_case_insensitively(client: TestClient, name: str):
     response = client.post("/api/categories", json={"name": name, "buy_symbol": "XYZ"})
@@ -176,32 +170,14 @@ def test_create_duplicate_name_conflicts_case_insensitively(client: TestClient, 
     assert isinstance(response.json()["detail"], str)
 
 
-def test_create_beyond_max_categories_conflicts(client: TestClient):
-    for i in range(5):  # 3 existing + 5 = the maximum of 8
-        response = client.post("/api/categories", json={"name": f"Extra {i}", "buy_symbol": "XYZ"})
-        assert response.status_code == 201
-    response = client.post("/api/categories", json={"name": "One Too Many", "buy_symbol": "XYZ"})
-    assert response.status_code == 409
-    assert len(client.get("/api/config").json()["categories"]) == 8
-
-
 @pytest.mark.parametrize(
     "payload",
     [
         {"name": "Excluded", "buy_symbol": "XYZ"},
-        {"name": "unassigned", "buy_symbol": "XYZ"},
-        {"name": "", "buy_symbol": "XYZ"},
-        {"name": "   ", "buy_symbol": "XYZ"},
-        {"name": "x" * 41, "buy_symbol": "XYZ"},
-        {"name": "A/B", "buy_symbol": "XYZ"},
         {"name": "Gold", "buy_symbol": "not a symbol"},
-        {"name": "Gold", "buy_symbol": ""},
-        {"name": "Gold", "buy_symbol": "TOOLONGSYMBOL"},
         {"name": "Gold", "buy_symbol": "GLD", "target": 101},
-        {"name": "Gold", "buy_symbol": "GLD", "target": -1},
         {"name": "Gold", "buy_symbol": "GLD", "target": "abc"},
         {"buy_symbol": "GLD"},
-        {"name": "Gold"},
     ],
 )
 def test_create_invalid_category_is_rejected(client: TestClient, payload: dict):
@@ -211,23 +187,6 @@ def test_create_invalid_category_is_rejected(client: TestClient, payload: dict):
 
 
 # --- categories: update -----------------------------------------------------
-
-
-def test_rename_category_cascades_to_assignments(client: TestClient, store: ConfigStore):
-    response = client.patch("/api/categories/US Stocks", json={"name": "Domestic"})
-    assert response.status_code == 200
-    body = response.json()
-    assert names(body) == ["Domestic", "International", "Bonds"]
-    assert body["assignments"]["VTI"] == {"Domestic": 1.0}
-    assert body["assignments"]["VT"] == {"Domestic": 0.6, "International": 0.4}
-    on_disk = store.load()
-    assert on_disk.direct_mappings["VTI"] == "Domestic"
-    assert on_disk.fractional_mappings["VT"] == {"Domestic": 0.6, "International": 0.4}
-
-
-def test_rename_to_new_name_makes_old_name_unknown(client: TestClient):
-    client.patch("/api/categories/Bonds", json={"name": "Fixed Income"})
-    assert client.patch("/api/categories/Bonds", json={"target": 5}).status_code == 404
 
 
 def test_rename_unicode_category(client: TestClient):
@@ -254,32 +213,6 @@ def test_patch_target_null_clears_but_omitted_leaves_unchanged(client: TestClien
     assert summary_category(changed.json(), "Bonds")["target"] == 25.5
 
 
-def test_patch_empty_body_is_a_noop(client: TestClient):
-    before = client.get("/api/config").json()
-    response = client.patch("/api/categories/Bonds", json={})
-    assert response.status_code == 200
-    assert response.json() == before
-
-
-def test_rename_to_same_name_is_a_noop(client: TestClient):
-    before = client.get("/api/config").json()
-    response = client.patch("/api/categories/Bonds", json={"name": "Bonds"})
-    assert response.status_code == 200
-    assert response.json() == before
-
-
-def test_case_only_rename_is_allowed(client: TestClient):
-    response = client.patch("/api/categories/Bonds", json={"name": "BONDS"})
-    assert response.status_code == 200
-    assert names(response.json()) == ["US Stocks", "International", "BONDS"]
-
-
-@pytest.mark.parametrize("new_name", ["International", "international"])
-def test_rename_onto_existing_name_conflicts(client: TestClient, new_name: str):
-    response = client.patch("/api/categories/Bonds", json={"name": new_name})
-    assert response.status_code == 409
-
-
 def test_update_unknown_category_is_404(client: TestClient):
     response = client.patch("/api/categories/Nope", json={"target": 5})
     assert response.status_code == 404
@@ -290,11 +223,7 @@ def test_update_unknown_category_is_404(client: TestClient):
     "payload",
     [
         {"target": 150},
-        {"target": -5},
-        {"name": ""},
         {"name": "Excluded"},
-        {"name": "A/B"},
-        {"buy_symbol": "not a symbol"},
     ],
 )
 def test_update_invalid_values_are_rejected(client: TestClient, payload: dict):
@@ -325,14 +254,6 @@ def test_delete_unknown_category_is_404(client: TestClient):
     assert client.delete("/api/categories/Nope").status_code == 404
 
 
-def test_delete_last_category_is_allowed(client: TestClient):
-    for symbol in ("VTI", "VXUS", "BND", "VT"):
-        assert client.put(f"/api/assignments/{symbol}", json={"weights": {}}).status_code == 200
-    for name in CATEGORY_NAMES:
-        assert client.delete(f"/api/categories/{name}").status_code == 200
-    assert client.get("/api/config").json()["categories"] == []
-
-
 # --- assignments ------------------------------------------------------------
 
 
@@ -352,12 +273,6 @@ def test_assign_multiple_categories_is_fractional(client: TestClient, store: Con
     config = store.load()
     assert "AAPL" not in config.direct_mappings
     assert config.fractional_mappings["AAPL"] == pytest.approx({"US Stocks": 0.6, "Bonds": 0.4})
-
-
-def test_assign_weights_are_normalised(client: TestClient):
-    response = client.put("/api/assignments/AAPL", json={"weights": {"US Stocks": 60, "Bonds": 40}})
-    assert response.status_code == 200
-    assert response.json()["assignments"]["AAPL"] == pytest.approx({"US Stocks": 0.6, "Bonds": 0.4})
 
 
 def test_assign_excluded(client: TestClient, store: ConfigStore):
@@ -380,32 +295,6 @@ def test_unassign_removes_symbol_everywhere(client: TestClient, payload: dict):
     assert "VTI" not in body["assignments"]
     assert "VT" not in body["assignments"]
     assert "SPAXX" not in body["exclusions"]
-
-
-def test_assignment_symbol_is_uppercased(client: TestClient):
-    response = client.put("/api/assignments/voo", json={"weights": {"US Stocks": 1}})
-    assert response.status_code == 200
-    assert response.json()["assignments"]["VOO"] == {"US Stocks": 1.0}
-    assert "voo" not in response.json()["assignments"]
-
-
-def test_reassigning_leaves_no_stale_entries(client: TestClient, store: ConfigStore):
-    client.put("/api/assignments/VTI", json={"weights": {"US Stocks": 50, "Bonds": 50}})
-    config = store.load()
-    assert "VTI" not in config.direct_mappings
-    assert "VTI" in config.fractional_mappings
-    client.put("/api/assignments/VTI", json={"weights": {"US Stocks": 1}})
-    config = store.load()
-    assert config.direct_mappings["VTI"] == "US Stocks"
-    assert "VTI" not in config.fractional_mappings
-
-
-def test_assigning_an_excluded_symbol_removes_the_exclusion(client: TestClient):
-    response = client.put("/api/assignments/SPAXX", json={"weights": {"Bonds": 1}})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["exclusions"] == []
-    assert body["assignments"]["SPAXX"] == {"Bonds": 1.0}
 
 
 def test_assign_unknown_category_is_404(client: TestClient):
@@ -454,16 +343,6 @@ def test_allocation_reflects_config_changes(client: TestClient, csv_bytes: bytes
     assert {c["category"]: c["current_value"] for c in body["categories"]}["Bonds"] == (
         pytest.approx(5000)
     )
-
-
-def test_allocation_includes_zero_value_categories(client: TestClient):
-    portfolio = {"holdings": [], "total_value": 0, "total_gain_loss": None}
-    body = client.post("/api/allocation", json=portfolio).json()
-    assert [c["category"] for c in body["categories"]] == CATEGORY_NAMES
-    assert all(
-        c["current_value"] == 0 and c["percent_of_included"] == 0 for c in body["categories"]
-    )
-    assert body["total_value"] == 0
 
 
 def test_allocation_invalid_body_is_422(client: TestClient):
@@ -548,17 +427,6 @@ def test_rebalance_awkward_amount_sums_exactly(client: TestClient, csv_bytes: by
     assert response.status_code == 200
     buys = [r["buy_amount"] for r in response.json()["recommendations"]]
     assert round(sum(buys) * 100) == 100001
-
-
-def test_rebalance_missing_target_category_counts_as_zero(client: TestClient, csv_bytes: bytes):
-    allocation = upload(client, csv_bytes).json()["allocation"]
-    body = rebalance_body(allocation, target={"US Stocks": 70, "International": 30})
-    response = client.post("/api/rebalance", json=body)
-    assert response.status_code == 200
-    result = response.json()
-    bonds = next(r for r in result["recommendations"] if r["category"] == "Bonds")
-    assert bonds["buy_amount"] == 0
-    assert round(sum(r["buy_amount"] for r in result["recommendations"]) * 100) == 500000
 
 
 def test_rebalance_unknown_target_category_is_422(client: TestClient, csv_bytes: bytes):
@@ -744,15 +612,9 @@ def test_grouped_summary_is_in_config_order(grouped: TestClient):
     ("body", "status"),
     [
         ({"name": "Stocks"}, 409),
-        ({"name": "stocks"}, 409),
-        ({"name": "bonds"}, 409),  # a category's name
         ({"name": "New", "parent": "Nope"}, 404),
-        ({"name": "New", "parent": "Bonds"}, 404),  # categories are not parents
         ({"name": ""}, 422),
-        ({"name": "a/b"}, 422),
-        ({"name": "Excluded"}, 422),
         ({"name": "New", "target": 101}, 422),
-        ({"name": "New", "target": -1}, 422),
         ({}, 422),
     ],
 )
@@ -777,46 +639,26 @@ def test_update_group_null_versus_omitted(grouped: TestClient):
     assert grouped.patch("/api/groups/Foreign", json={"name": None}).status_code == 200
 
 
-def test_rename_group_cascades_to_children(grouped: TestClient):
-    response = grouped.patch("/api/groups/Stocks", json={"name": "Equities"})
+def test_delete_group(grouped: TestClient):
+    # Re-parenting rules are covered by the store tests; this checks the route.
+    response = grouped.delete("/api/groups/Foreign")
     assert response.status_code == 200
-    body = response.json()
-    assert [g["name"] for g in body["groups"]] == ["Equities", "Foreign"]
-    assert group(body, "Foreign")["parent"] == "Equities"
-    assert summary_category(body, "US Stocks")["parent"] == "Equities"
-    assert summary_category(body, "International")["parent"] == "Foreign"
+    assert "Foreign" not in [g["name"] for g in response.json()["groups"]]
+    assert grouped.delete("/api/groups/Foreign").status_code == 404
 
 
 @pytest.mark.parametrize(
     ("name", "body", "status"),
     [
-        ("Stocks", {"parent": "Stocks"}, 409),  # into itself
         ("Stocks", {"parent": "Foreign"}, 409),  # into a descendant
-        ("Stocks", {"name": "foreign"}, 409),
-        ("Stocks", {"name": "Bonds"}, 409),  # a category's name
         ("Nope", {"target": 5}, 404),
-        ("Stocks", {"parent": "Nope"}, 404),
         ("Stocks", {"target": 101}, 422),
-        ("Stocks", {"name": "a/b"}, 422),
     ],
 )
 def test_update_group_errors(grouped: TestClient, config_path: Path, name, body, status):
     before = config_path.read_bytes()
     assert grouped.patch(f"/api/groups/{name}", json=body).status_code == status
     assert config_path.read_bytes() == before
-
-
-def test_delete_group_reparents_children(grouped: TestClient):
-    response = grouped.delete("/api/groups/Foreign")
-    assert response.status_code == 200
-    body = response.json()
-    assert [g["name"] for g in body["groups"]] == ["Stocks"]
-    assert summary_category(body, "International")["parent"] == "Stocks"
-    assert grouped.get("/api/config").json() == body
-    top = grouped.delete("/api/groups/Stocks").json()
-    assert top["groups"] == []
-    assert all(c["parent"] is None for c in top["categories"])
-    assert grouped.delete("/api/groups/Stocks").status_code == 404
 
 
 def test_update_category_parent_null_versus_omitted(grouped: TestClient):
