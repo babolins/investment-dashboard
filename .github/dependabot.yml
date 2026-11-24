@@ -1,0 +1,21 @@
+# Keeps CI action versions and dependency lockfiles current with monthly PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+    groups:
+      # One PR for the whole dev toolchain rather than one per package.
+      frontend-tooling:
+        patterns: ["*"]

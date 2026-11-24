@@ -20,12 +20,13 @@ A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV e
 
 ## Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.12 · FastAPI · Pydantic v2 |
-| Frontend | React 18 · TypeScript · Vite · Recharts |
-| Packaging | `uv` (backend) · `npm` (frontend) |
-| Deployment | Docker (single container, self-hosted) |
+| Layer      | Technology                                                                          |
+| ---------- | ----------------------------------------------------------------------------------- |
+| Backend    | Python 3.12 · FastAPI · Pydantic v2                                                 |
+| Frontend   | Svelte 5 · TypeScript · Vite (chart is hand-drawn SVG)                              |
+| Packaging  | `uv` (backend) · `npm` (frontend)                                                   |
+| Quality    | ruff, pyright, pytest (backend) · ESLint, Prettier, svelte-check, Vitest (frontend) |
+| Deployment | Docker (single container, self-hosted)                                              |
 
 ## Quarterly Workflow
 
@@ -42,7 +43,7 @@ A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV e
 ### Prerequisites
 
 - [uv](https://github.com/astral-sh/uv) ≥ 0.4
-- Node.js ≥ 20 and npm ≥ 10
+- Node.js ≥ 20.19 and npm ≥ 10
 - Docker + Docker Compose (for deployment)
 
 ### Configuration
@@ -54,7 +55,7 @@ Copy `backend/config.example.yaml` to `backend/config.yaml` and edit your securi
 ```bash
 cd backend
 uv sync
-uv run fastapi dev app/main.py
+uv run uvicorn app.main:app --reload
 ```
 
 The API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
@@ -71,18 +72,23 @@ npm run dev
 
 The Vite dev server runs at `http://localhost:5173` and proxies `/api` requests to the backend automatically.
 
-### Run backend tests
+### Checks
+
+CI runs these on every push to `main` and every pull request (`.github/workflows/ci.yml`).
 
 ```bash
-cd backend
-uv run pytest -v
-```
+# Backend (from backend/)
+uv run ruff check app tests
+uv run ruff format --check app tests   # `uv run ruff format app tests` to fix
+uv run pyright
+uv run pytest
 
-### Lint
-
-```bash
-cd backend && uv run ruff check app/ tests/
-cd frontend && npm run build  # TypeScript type-check included
+# Frontend (from frontend/)
+npm run lint
+npm run format:check                   # `npm run format` to fix
+npm run check                          # svelte-check (types + a11y)
+npm test
+npm run build
 ```
 
 ---
@@ -98,17 +104,17 @@ cp backend/config.example.yaml backend/config.yaml
 docker compose up -d --build
 ```
 
-The container serves both the API and the built React frontend on a single port (default `8000`). There is no separate nginx container.
+The container serves both the API and the built frontend on a single port (default `8000`). There is no separate nginx container.
 
 ### Environment variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8000` | Host port to bind |
-| `CONFIG_PATH` | `/etc/investment-dashboard/config.yaml` | Path to config inside the container |
-| `APP_ENV` | `production` | Application environment |
-| `VITE_API_URL` | _(empty)_ | Set at build time if the API is on a different host; leave empty for same-origin `/api` routing |
-| `COMPOSE_NETWORK` | `investment-dashboard` | Docker network name |
+| Variable          | Default                                 | Description                                                                                     |
+| ----------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `PORT`            | `8000`                                  | Host port to bind                                                                               |
+| `CONFIG_PATH`     | `/etc/investment-dashboard/config.yaml` | Path to config inside the container                                                             |
+| `APP_ENV`         | `production`                            | Application environment                                                                         |
+| `VITE_API_URL`    | _(empty)_                               | Set at build time if the API is on a different host; leave empty for same-origin `/api` routing |
+| `COMPOSE_NETWORK` | `investment-dashboard`                  | Docker network name                                                                             |
 
 ### Reverse proxy (optional)
 
@@ -123,4 +129,3 @@ app.your-domain  →  app:8000
 ```bash
 docker compose down
 ```
-

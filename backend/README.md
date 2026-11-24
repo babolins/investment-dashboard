@@ -1,12 +1,12 @@
 # Backend
 
-FastAPI application — serves the REST API and, in production, the built React frontend as static files.
+FastAPI application — serves the REST API and, in production, the built frontend as static files.
 
 ## Development
 
 ```bash
 uv sync
-uv run fastapi dev app/main.py
+uv run uvicorn app.main:app --reload
 ```
 
 API available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
@@ -20,23 +20,27 @@ Copy `config.example.yaml` to `config.yaml` and edit your symbol-to-bucket mappi
 ## Tests
 
 ```bash
-uv run pytest -v
+uv run pytest
 ```
 
-## Lint
+Unit tests cover the services; integration tests exercise the API through FastAPI's `TestClient`.
+
+## Checks
 
 ```bash
-uv run ruff check app/ tests/
+uv run ruff check app tests
+uv run ruff format --check app tests   # `uv run ruff format app tests` to fix
+uv run pyright
 ```
 
 ## Project layout
 
 ```
 app/
-  api/        # FastAPI routers (holdings, rebalance, config)
+  api/        # FastAPI routers (holdings, rebalance, config) and shared dependencies (deps.py)
   models/     # Pydantic schemas and config models
   services/   # Business logic (allocation, CSV parsing, rebalancing)
 tests/
-  unit/       # Unit tests for services
-  integration/
+  unit/         # Services, schemas and config loading
+  integration/  # API endpoints via TestClient
 ```

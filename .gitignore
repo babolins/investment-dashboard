@@ -52,3 +52,6 @@ frontend/dist/
 
 # User configuration — copy from config.example.yaml and keep local
 backend/config.yaml
+
+# Local production-layout builds (FastAPI serves backend/static when present)
+backend/static/
