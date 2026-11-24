@@ -8,13 +8,19 @@ import logging
 import os
 import pathlib
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import config as config_router
 from app.api import holdings, rebalance
+from app.services.config_store import (
+    ConfigError,
+    ConfigWriteError,
+    ConflictError,
+    NotFoundError,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,6 +46,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Errors raised by the config store and rebalance engine.  Starlette picks the
+# handler of the closest class, so the subclasses win over ConfigError.
+# ---------------------------------------------------------------------------
+def _json_error(status_code: int, detail: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"detail": detail})
+
+
+@app.exception_handler(NotFoundError)
+def _not_found(_: Request, exc: NotFoundError) -> JSONResponse:
+    return _json_error(404, str(exc))
+
+
+@app.exception_handler(ConflictError)
+def _conflict(_: Request, exc: ConflictError) -> JSONResponse:
+    return _json_error(409, str(exc))
+
+
+@app.exception_handler(ConfigError)
+def _invalid_config(_: Request, exc: ConfigError) -> JSONResponse:
+    return _json_error(422, str(exc))
+
+
+@app.exception_handler(ConfigWriteError)
+def _config_not_writable(_: Request, exc: ConfigWriteError) -> JSONResponse:
+    return _json_error(500, str(exc))
+
 
 # ---------------------------------------------------------------------------
 # Routers

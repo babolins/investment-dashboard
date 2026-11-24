@@ -1,5 +1,5 @@
 """
-/api/holdings — CSV upload and portfolio table endpoint.
+/api/upload and /api/allocation: CSV upload and grouping a portfolio into categories.
 """
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.api.deps import ConfigDep
-from app.models.schemas import UploadResponse
+from app.models.schemas import AllocationBreakdown, PortfolioSnapshot, UploadResponse
 from app.services.allocation import compute_allocation
 from app.services.csv_parser import parse_fidelity_csv
 
@@ -45,3 +45,14 @@ async def upload_portfolio(config: ConfigDep, file: UploadFile = File(...)) -> U
 
     breakdown = compute_allocation(snapshot, config)
     return UploadResponse(portfolio=snapshot, allocation=breakdown)
+
+
+@router.post("/allocation", response_model=AllocationBreakdown)
+def allocation(portfolio: PortfolioSnapshot, config: ConfigDep) -> AllocationBreakdown:
+    """
+    Re-group an already parsed portfolio with the current config.
+
+    Lets the UI refresh the breakdown after categories or assignments change
+    without uploading the CSV again.
+    """
+    return compute_allocation(portfolio, config)

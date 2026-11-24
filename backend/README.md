@@ -15,7 +15,7 @@ The Vite dev server (`npm run dev` in `../frontend`) proxies `/api` to this port
 
 ## Configuration
 
-Copy `config.example.yaml` to `config.yaml` and edit your symbol-to-bucket mappings before starting. The file is read from the path in `CONFIG_PATH` (default: `./config.yaml` in dev, `/etc/investment-dashboard/config.yaml` in Docker).
+Categories and symbol assignments live in a YAML config, read from the first of `CONFIG_PATH`, `/etc/investment-dashboard/config.yaml`, `./config.yaml`, then `./config.example.yaml`. The API edits it in place (`app/services/config_store.py`, comment-preserving via ruamel.yaml); when running from the example, edits go to a new `./config.yaml` instead. See `config.example.yaml` for the format.
 
 ## Tests
 
@@ -39,7 +39,7 @@ uv run pyright
 app/
   api/        # FastAPI routers (holdings, rebalance, config) and shared dependencies (deps.py)
   models/     # Pydantic schemas and config models
-  services/   # Business logic (allocation, CSV parsing, rebalancing)
+  services/   # Business logic (allocation, CSV parsing, rebalancing) and the config store
 tests/
   unit/         # Services, schemas and config loading
   integration/  # API endpoints via TestClient

@@ -1,18 +1,20 @@
 # Investment Portfolio Rebalancer
 
-A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV export, displays your current holdings and allocation, and computes how much to invest in **VTI**, **VXUS**, and **BND** each quarter.
+A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV export, groups your holdings into categories you define (e.g. US stocks, international, bonds), and computes how much to invest in each category's ETF each quarter.
 
 ## Features
 
 - Upload a Fidelity portfolio CSV snapshot
 - View holdings table: symbol, quantity, current value, total gain/loss, % of account
-- Allocation pie chart grouped by VTI / VXUS / BND buckets
-- YAML-configurable security mappings (direct, fractional, and excluded symbols)
-- Rebalance calculator: enter investment amount + target allocation → buy guidance in dollars and % of investment
+- Allocation donut chart grouped by category
+- Categories managed in the UI: create, rename, set the ETF to buy and a default target, delete
+- Click a holding's category pill to assign it to one or more categories (split by %), exclude it, or leave it unassigned
+- Categories and assignments are saved to `config.yaml` (comments preserved); everything else — uploads, amounts, targets typed into the form — stays in the browser session
+- Rebalance calculator: enter investment amount + target % per category → buy guidance in dollars and % of investment
 
 ## Non-goals (v1)
 
-- No historical snapshot storage
+- No historical snapshot storage (the config file is the only persisted state)
 - No brokerage order execution
 - No live price fetching
 - No multi-user authentication
@@ -48,7 +50,9 @@ A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV e
 
 ### Configuration
 
-Copy `backend/config.example.yaml` to `backend/config.yaml` and edit your security-to-bucket mappings before starting the backend. See [backend/config.example.yaml](backend/config.example.yaml) for a fully annotated example.
+The backend reads its config from the first of: `CONFIG_PATH`, `/etc/investment-dashboard/config.yaml`, `backend/config.yaml`, then the bundled [backend/config.example.yaml](backend/config.example.yaml) (fully annotated). Edits made in the UI are written back to that file — or, when running from the example, to a new `backend/config.yaml`, so the tracked example is never modified.
+
+You can manage categories and assignments entirely from the UI, or edit the YAML by hand. Older config files (with `primary_symbols` / `default_target_allocations`) are upgraded automatically; the file is rewritten in the new format on the first save.
 
 ### Run the backend
 
@@ -105,6 +109,8 @@ docker compose up -d --build
 ```
 
 The container serves both the API and the built frontend on a single port (default `8000`). There is no separate nginx container.
+
+`backend/config.yaml` is bind-mounted **writable** so category edits made in the UI persist across restarts. It must exist before the first `docker compose up` (otherwise Docker creates a directory in its place).
 
 ### Environment variables
 

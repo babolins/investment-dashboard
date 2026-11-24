@@ -2,30 +2,26 @@
 Allocation grouping engine.
 
 Takes a parsed PortfolioSnapshot and an AllocationConfig and produces
-an AllocationBreakdown that groups holdings into VTI / VXUS / BND buckets.
+an AllocationBreakdown that groups holdings into the user-defined categories
+(in config order; categories with no holdings are included with value 0).
 
-Fractional mappings split a single holding's value across multiple buckets
+Fractional mappings split a single holding's value across multiple categories
 proportionally to the configured weights.
 
 Excluded symbols (e.g. SPAXX, FDRXX) are tallied separately and do not
-contribute to the bucket percentages shown in the chart.
+contribute to the category percentages shown in the chart.
 
-Unknown symbols (not in any mapping and not excluded) are logged as warnings
-but are ignored in the allocation breakdown rather than crashing.
+Symbols with no mapping that are not excluded are tallied as unassigned (and
+logged as a warning) rather than crashing; they are also left out of the
+category percentages.
 """
 
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 
 from app.models.config import AllocationConfig
-from app.models.schemas import (
-    BUCKETS,
-    AllocationBreakdown,
-    AllocationBucket,
-    PortfolioSnapshot,
-)
+from app.models.schemas import AllocationBreakdown, CategoryAllocation, PortfolioSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -35,23 +31,24 @@ def compute_allocation(
     config: AllocationConfig,
 ) -> AllocationBreakdown:
     """
-    Group portfolio holdings into VTI / VXUS / BND allocation buckets.
+    Group portfolio holdings into the configured allocation categories.
 
     Parameters
     ----------
     snapshot:
         Parsed portfolio from the CSV upload.
     config:
-        Validated YAML config with direct/fractional/exclusion rules.
+        Validated YAML config with categories, mappings and exclusions.
 
     Returns
     -------
     AllocationBreakdown
-        Per-bucket values and percentages, plus excluded/total summaries.
+        Per-category values and percentages, plus excluded/unassigned/total summaries.
     """
-    bucket_values: dict[str, float] = defaultdict(float)
+    category_values = dict.fromkeys(config.category_names, 0.0)
     excluded_value = 0.0
-    unrecognised: list[str] = []
+    unassigned_value = 0.0
+    unassigned: list[str] = []
 
     for holding in snapshot.holdings:
         sym = holding.symbol.upper()
@@ -60,40 +57,40 @@ def compute_allocation(
             excluded_value += holding.current_value
             continue
 
-        weights = config.bucket_weights_for(sym)
+        weights = config.weights_for(sym)
         if not weights:
-            unrecognised.append(sym)
+            unassigned_value += holding.current_value
+            unassigned.append(sym)
             continue
 
-        for bucket, weight in weights.items():
-            bucket_values[bucket] += holding.current_value * weight
+        for category, weight in weights.items():
+            category_values[category] += holding.current_value * weight
 
-    if unrecognised:
+    if unassigned:
         logger.warning(
-            "The following symbols have no mapping in config.yaml and were "
-            "excluded from the allocation breakdown: %s. "
-            "Add them to direct_mappings, fractional_mappings, or exclusions.",
-            sorted(set(unrecognised)),
+            "The following symbols have no category in config.yaml and are counted as "
+            "unassigned: %s. Assign them to a category or exclude them.",
+            sorted(set(unassigned)),
         )
 
-    included_value = sum(bucket_values.values())
-    total_value = included_value + excluded_value
+    included_value = sum(category_values.values())
+    total_value = included_value + excluded_value + unassigned_value
 
-    buckets: list[AllocationBucket] = []
-    for bucket in sorted(BUCKETS):  # deterministic order
-        value = bucket_values.get(bucket, 0.0)
-        pct = (value / included_value * 100) if included_value > 0 else 0.0
-        buckets.append(
-            AllocationBucket(
-                bucket=bucket,
-                current_value=round(value, 2),
-                percent_of_included=round(pct, 4),
-            )
+    categories = [
+        CategoryAllocation(
+            category=category,
+            current_value=round(value, 2),
+            percent_of_included=round(
+                value / included_value * 100 if included_value > 0 else 0.0, 4
+            ),
         )
+        for category, value in category_values.items()
+    ]
 
     return AllocationBreakdown(
-        buckets=buckets,
+        categories=categories,
         included_value=round(included_value, 2),
         excluded_value=round(excluded_value, 2),
+        unassigned_value=round(unassigned_value, 2),
         total_value=round(total_value, 2),
     )
