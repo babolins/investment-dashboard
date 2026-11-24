@@ -4,27 +4,34 @@ Rebalance / buy-guidance engine.
 Algorithm
 ---------
 Given:
-  - current allocation breakdown (per bucket, post-exclusion)
+  - current allocation breakdown (per category; excluded and unassigned
+    holdings are not part of it)
   - investment_amount  (new cash to deploy)
-  - target weights     (VTI / VXUS / BND, sum to 100)
+  - target weights     (per leaf category, sum to 100; one left out counts as 0)
 
 Step 1: Compute new_total = included_value + investment_amount
-Step 2: For each bucket:
+Step 2: For each leaf category (in config order):
           target_value  = new_total * (target_weight / 100)
           raw_buy       = max(0, target_value - current_value)
-Step 3: Scale raw_buy amounts so they sum exactly to investment_amount.
-        (If a bucket is overweight no raw_buy is generated for it; the
-         remaining buckets absorb the full investment proportionally.)
-Step 4: Apply largest-remainder rounding so displayed cent values sum
-        exactly to investment_amount.
+Step 3: Scale raw_buy amounts so they sum to investment_amount.
+        (If a category is overweight no raw_buy is generated for it; the
+         remaining categories absorb the full investment proportionally.
+         If every raw_buy is 0 -- only possible when the supplied breakdown is
+         internally inconsistent -- split the investment by target weights.)
+Step 4: Round to whole cents with the largest-remainder method: floor each
+        amount, then give the leftover cents to the largest fractional
+        remainders (ties -> lowest index), so the buys sum to
+        investment_amount to the cent.
 
-The scaling in step 3 handles the edge case where one bucket is so
+The scaling in step 3 handles the edge case where one category is so
 overweight that the others need more than the investment_amount in total —
 we cap each recommendation at its pro-rata share of available cash rather
-than allowing one bucket to receive more than 100% of investment.
+than allowing one category to receive more than 100% of investment.
 """
 
 from __future__ import annotations
+
+import math
 
 from app.models.config import AllocationConfig
 from app.models.schemas import (
@@ -33,20 +40,28 @@ from app.models.schemas import (
     RebalanceRequest,
     RebalanceResult,
 )
+from app.services.config_store import ConfigError
+
+_CENT_EPS = 1e-6  # absorbs float noise, e.g. 0.29 * 100 == 28.999999999999996
 
 
 def _largest_remainder_round(values: list[float], total: float) -> list[float]:
     """
-    Round a list of floats to 2 decimal places such that they sum to `total`
-    (also rounded to 2 dp).
+    Round `values` to whole cents so they sum exactly to `total` (in cents).
+
+    Works in integer cents: floor each value, then hand the leftover cents to
+    the entries with the largest fractional remainder (lowest index wins ties).
+    Flooring (not round()) guarantees the leftover is never negative.
     """
-    floored = [round(v, 2) for v in values]
-    remainders = [(v - f, i) for i, (v, f) in enumerate(zip(values, floored))]
-    diff_cents = round((total - sum(floored)) * 100)
-    # Add 1 cent to the entries with largest fractional remainder
-    for _, i in sorted(remainders, reverse=True)[: int(diff_cents)]:
-        floored[i] = round(floored[i] + 0.01, 2)
-    return floored
+    cents = [math.floor(v * 100 + _CENT_EPS) for v in values]
+    remainders = [v * 100 - c for v, c in zip(values, cents, strict=True)]
+    leftover = round(total * 100) - sum(cents)
+    if not 0 <= leftover <= len(values):
+        raise ValueError("values do not sum to total within rounding tolerance")
+    order = sorted(range(len(values)), key=lambda i: (-remainders[i], i))
+    for i in order[:leftover]:
+        cents[i] += 1
+    return [c / 100 for c in cents]
 
 
 def compute_rebalance(
@@ -55,71 +70,78 @@ def compute_rebalance(
     config: AllocationConfig,
 ) -> RebalanceResult:
     """
-    Compute buy guidance for VTI / VXUS / BND given an investment amount
-    and target allocation weights.
+    Compute buy guidance for the configured categories given an investment
+    amount and target allocation weights.
 
     Parameters
     ----------
     breakdown:
-        Current allocation from compute_allocation().
+        Current allocation from compute_allocation().  Categories it lacks count
+        as empty; ones the config no longer has are ignored.
     request:
         Investment amount and target weights.
     config:
-        Config used to look up primary purchase symbols.
+        Config used for the category order and buy symbols.
 
     Returns
     -------
     RebalanceResult
-        Per-bucket buy amounts and percentages.
-    """
-    inv = request.investment_amount
-    target_map = {
-        "VTI": request.target.vti,
-        "VXUS": request.target.vxus,
-        "BND": request.target.bnd,
-    }
+        Per-category buy amounts and percentages, in config order.
 
-    current_map = {b.bucket: b.current_value for b in breakdown.buckets}
-    current_pct_map = {b.bucket: b.percent_of_included for b in breakdown.buckets}
+    Raises
+    ------
+    ConfigError
+        If the target names a category that is unknown or has sub-categories.
+    """
+    cats = config.leaf_names
+    unknown = sorted(set(request.target) - set(cats))
+    if unknown:
+        raise ConfigError(
+            f"Unknown or non-leaf categories in target: {unknown}. Targets go to: {cats}"
+        )
+
+    inv = request.investment_amount
+    target_map = {c: request.target.get(c, 0.0) for c in cats}
+
+    current_map = {b.category: b.current_value for b in breakdown.categories}
+    current_pct_map = {b.category: b.percent_of_included for b in breakdown.categories}
     included = breakdown.included_value
     new_total = included + inv
 
     # Step 1: raw (unscaled) buy amounts
     raw_buys: dict[str, float] = {}
-    for bucket, target_pct in target_map.items():
-        current_val = current_map.get(bucket, 0.0)
+    for category, target_pct in target_map.items():
+        current_val = current_map.get(category, 0.0)
         target_val = new_total * (target_pct / 100)
-        raw_buys[bucket] = max(0.0, target_val - current_val)
+        raw_buys[category] = max(0.0, target_val - current_val)
 
     raw_total = sum(raw_buys.values())
 
     # Step 2: scale so buy amounts sum to exactly investment_amount
-    # If raw_total == 0 (everything perfectly balanced), distribute evenly.
+    # raw_total == 0 only for inconsistent input (included_value vs categories are
+    # client-supplied); fall back to target weights.
     if raw_total == 0:
-        buckets_ordered = ["VTI", "VXUS", "BND"]
-        scaled = {b: inv * (target_map[b] / 100) for b in buckets_ordered}
+        scaled = {c: inv * (target_map[c] / 100) for c in cats}
     else:
         scale = inv / raw_total
-        scaled = {b: v * scale for b, v in raw_buys.items()}
+        scaled = {c: v * scale for c, v in raw_buys.items()}
 
     # Step 3: largest-remainder rounding so sum == investment_amount
-    buckets_ordered = ["VTI", "VXUS", "BND"]
-    raw_list = [scaled[b] for b in buckets_ordered]
-    rounded_list = _largest_remainder_round(raw_list, inv)
-    rounded_buys = dict(zip(buckets_ordered, rounded_list))
+    rounded_list = _largest_remainder_round([scaled[c] for c in cats], inv)
+    rounded_buys = dict(zip(cats, rounded_list, strict=True))
 
     recommendations: list[BuyRecommendation] = []
-    for bucket in buckets_ordered:
-        buy_amt = rounded_buys[bucket]
+    for category in cats:
+        buy_amt = rounded_buys[category]
         buy_pct = (buy_amt / inv * 100) if inv > 0 else 0.0
-        target_val = new_total * (target_map[bucket] / 100)
+        target_val = new_total * (target_map[category] / 100)
         recommendations.append(
             BuyRecommendation(
-                bucket=bucket,
-                symbol=config.primary_symbol_for(bucket),
-                target_percent=round(target_map[bucket], 4),
-                current_percent=round(current_pct_map.get(bucket, 0.0), 4),
-                current_value=round(current_map.get(bucket, 0.0), 2),
+                category=category,
+                symbol=config.buy_symbol_for(category),
+                target_percent=round(target_map[category], 4),
+                current_percent=round(current_pct_map.get(category, 0.0), 4),
+                current_value=round(current_map.get(category, 0.0), 2),
                 target_value=round(target_val, 2),
                 buy_amount=buy_amt,
                 buy_percent_of_investment=round(buy_pct, 4),

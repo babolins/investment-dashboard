@@ -10,6 +10,7 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - CONFIG_PATH=${CONFIG_PATH:-/etc/investment-dashboard/config.yaml}
     volumes:
+      # Writable: category edits made in the UI are saved back to config.yaml here.
       - ${CONFIG_VOLUME:-./etc-investment-dashboard}:/etc/investment-dashboard
 
 networks:

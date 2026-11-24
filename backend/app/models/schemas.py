@@ -1,12 +1,15 @@
 """
 Pydantic schemas for API request/response contracts and internal domain types.
+Categories are user-defined (see app.models.config), so they are plain strings here.
 All monetary values are in USD. Percentages are expressed as 0-100 (not 0-1).
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from collections.abc import Mapping
+from typing import Annotated
 
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Portfolio / Holdings
@@ -39,24 +42,32 @@ class PortfolioSnapshot(BaseModel):
 # Allocation grouping
 # ---------------------------------------------------------------------------
 
-ALLOWED_BUCKETS = {"VTI", "VXUS", "BND"}
 
-
-class AllocationBucket(BaseModel):
+class CategoryAllocation(BaseModel):
     """One row in the grouped allocation breakdown."""
 
-    bucket: str  # 'VTI' | 'VXUS' | 'BND'
+    category: str
     current_value: float
-    percent_of_included: float  # 0-100, excludes excluded symbols
+    percent_of_included: float  # 0-100, excludes excluded and unassigned symbols
 
 
 class AllocationBreakdown(BaseModel):
-    """Result of grouping the portfolio into allocation buckets."""
+    """Result of grouping the portfolio into the configured categories."""
 
-    buckets: list[AllocationBucket]
-    included_value: float  # Total portfolio value after exclusions
+    categories: list[
+        CategoryAllocation
+    ]  # leaf categories in config order, zero-value ones included
+    included_value: float  # Value assigned to categories
     excluded_value: float  # Value of excluded symbols (cash, money-market, etc.)
-    total_value: float  # included + excluded
+    unassigned_value: float  # Value of symbols with no category and no exclusion
+    total_value: float  # included + excluded + unassigned
+
+
+class UploadResponse(BaseModel):
+    """/api/upload payload: parsed holdings plus allocation breakdown."""
+
+    portfolio: PortfolioSnapshot
+    allocation: AllocationBreakdown
 
 
 # ---------------------------------------------------------------------------
@@ -64,39 +75,37 @@ class AllocationBreakdown(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class TargetAllocation(BaseModel):
-    """
-    Target allocation weights for VTI, VXUS, BND.
-    Weights are 0-100 (percent). Must sum to 100.
-    """
+def _sum_to_100(target: Mapping[str, float]) -> Mapping[str, float]:
+    total = sum(target.values())
+    if abs(total - 100.0) > 0.01:
+        raise ValueError(f"Target allocation weights must sum to 100, got {total:.2f}")
+    return target
 
-    vti: float = Field(..., ge=0, le=100)
-    vxus: float = Field(..., ge=0, le=100)
-    bnd: float = Field(..., ge=0, le=100)
 
-    @model_validator(mode="after")
-    def weights_sum_to_100(self) -> "TargetAllocation":
-        total = self.vti + self.vxus + self.bnd
-        if abs(total - 100.0) > 0.01:
-            raise ValueError(
-                f"Target allocation weights must sum to 100, got {total:.2f}"
-            )
-        return self
+# leaf category -> percent (0-100); one left out counts as 0.  Whether the names are leaves
+# needs the config, so that check lives in the rebalance service.
+Targets = Annotated[
+    Mapping[str, Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]],  # Mapping: covariant
+    AfterValidator(_sum_to_100),
+]
 
 
 class RebalanceRequest(BaseModel):
-    investment_amount: float = Field(..., gt=0, description="Cash to invest in USD")
-    target: TargetAllocation
+    investment_amount: float = Field(
+        ..., gt=0, allow_inf_nan=False, description="Cash to invest in USD"
+    )
+    target: Targets
 
 
 class RebalanceAPIRequest(BaseModel):
-    """Combined rebalance body — merges RebalanceRequest + AllocationBreakdown fields."""
+    """Combined rebalance body: RebalanceRequest + AllocationBreakdown fields."""
 
-    investment_amount: float = Field(..., gt=0)
-    target: TargetAllocation
-    buckets: list[AllocationBucket]
+    investment_amount: float = Field(..., gt=0, allow_inf_nan=False)
+    target: Targets
+    categories: list[CategoryAllocation]
     included_value: float
     excluded_value: float
+    unassigned_value: float
     total_value: float
 
     def to_request(self) -> RebalanceRequest:
@@ -104,18 +113,19 @@ class RebalanceAPIRequest(BaseModel):
 
     def to_breakdown(self) -> AllocationBreakdown:
         return AllocationBreakdown(
-            buckets=self.buckets,
+            categories=self.categories,
             included_value=self.included_value,
             excluded_value=self.excluded_value,
+            unassigned_value=self.unassigned_value,
             total_value=self.total_value,
         )
 
 
 class BuyRecommendation(BaseModel):
-    """Buy guidance for a single ETF bucket."""
+    """Buy guidance for a single leaf category."""
 
-    bucket: str  # 'VTI' | 'VXUS' | 'BND'
-    symbol: str  # Primary purchase symbol from config
+    category: str
+    symbol: str | None  # The category's buy_symbol from config, if it has one
     target_percent: float  # 0-100
     current_percent: float  # 0-100, of included portfolio
     current_value: float
@@ -125,21 +135,63 @@ class BuyRecommendation(BaseModel):
 
 
 class RebalanceResult(BaseModel):
-    recommendations: list[BuyRecommendation]
+    recommendations: list[BuyRecommendation]  # config category order
     investment_amount: float
     total_buy_amount: float  # Should equal investment_amount after rounding correction
 
 
 # ---------------------------------------------------------------------------
-# Config-related response types
+# Config response and edit requests
 # ---------------------------------------------------------------------------
 
 
-class ConfigSummary(BaseModel):
-    """Summarises the active YAML config for the UI."""
+class CategorySummary(BaseModel):
+    name: str
+    parent: str | None  # another category's name; None = top level
+    target: float | None  # default % of the parent (of the portfolio at the top level)
+    buy_symbol: str | None
+    color: str | None  # set for leaves only
 
-    direct_mappings: dict[str, str]  # symbol -> bucket
-    fractional_mappings: dict[str, dict[str, float]]  # symbol -> {bucket: weight}
+
+class ConfigSummary(BaseModel):
+    """The active config as the UI needs it."""
+
+    categories: list[CategorySummary]  # display order (parents and leaves)
+    assignments: dict[str, dict[str, float]]  # symbol -> {category: weight 0-1}
     exclusions: list[str]
-    primary_symbols: dict[str, str]  # bucket -> purchase symbol
-    default_target: TargetAllocation | None
+
+
+# Name and buy_symbol format rules live in AllocationConfig (one source of truth); a
+# violation surfaces as a ConfigError (422).  Only types and the target range are checked here.
+_Target = Annotated[float | None, Field(ge=0, le=100, allow_inf_nan=False)]
+
+
+class CategoryCreate(BaseModel):
+    name: str
+    buy_symbol: str | None = None
+    target: _Target = None
+    parent: str | None = None  # category to create it in; omitted/null = top level
+
+
+class CategoryUpdate(BaseModel):
+    """Partial update: omitted fields stay; ``target: null`` clears the default target,
+    ``buy_symbol: null`` clears the buy symbol and ``parent: null`` moves the category to
+    the top level (``name: null`` is "omitted")."""
+
+    name: str | None = None
+    buy_symbol: str | None = None
+    target: _Target = None
+    parent: str | None = None
+
+
+class AssignmentUpdate(BaseModel):
+    """Where a symbol belongs: weights (one or more categories), excluded, or neither."""
+
+    weights: dict[str, Annotated[float, Field(gt=0, allow_inf_nan=False)]] | None = None
+    excluded: bool = False
+
+    @model_validator(mode="after")
+    def _not_both(self) -> AssignmentUpdate:
+        if self.excluded and self.weights:
+            raise ValueError("A symbol cannot be both excluded and assigned to categories")
+        return self

@@ -49,10 +49,10 @@ frontend/dist/
 *.sqlite
 *.sqlite3
 
-# Uploaded CSV files (should not be committed)
-backend/uploads/*
-!backend/uploads/.gitkeep
 
 # User configuration — copy from config.example.yaml and keep local
 backend/config.yaml
 etc-investment-dashboard/
+
+# Docker-layout frontend build (FastAPI serves backend/static, else frontend/dist, when present)
+backend/static/

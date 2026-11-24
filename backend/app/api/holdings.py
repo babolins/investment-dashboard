@@ -1,13 +1,13 @@
 """
-/api/holdings — CSV upload and portfolio table endpoint.
+/api/upload and /api/allocation: CSV upload and grouping a portfolio into categories.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.models.config import load_config
-from app.models.schemas import AllocationBreakdown, PortfolioSnapshot
+from app.api.deps import ConfigDep
+from app.models.schemas import AllocationBreakdown, PortfolioSnapshot, UploadResponse
 from app.services.allocation import compute_allocation
 from app.services.csv_parser import parse_fidelity_csv
 
@@ -16,8 +16,8 @@ router = APIRouter(tags=["holdings"])
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB guard
 
 
-@router.post("/upload", response_model=dict)
-async def upload_portfolio(file: UploadFile = File(...)) -> dict:
+@router.post("/upload", response_model=UploadResponse)
+async def upload_portfolio(config: ConfigDep, file: UploadFile = File(...)) -> UploadResponse:
     """
     Upload a Fidelity positions CSV.
 
@@ -27,7 +27,8 @@ async def upload_portfolio(file: UploadFile = File(...)) -> dict:
     if file.content_type and "csv" not in file.content_type and "text" not in file.content_type:
         raise HTTPException(
             status_code=415,
-            detail="Expected a CSV file. Received content-type: " + (file.content_type or "unknown"),
+            detail="Expected a CSV file. Received content-type: "
+            + (file.content_type or "unknown"),
         )
 
     raw = await file.read()
@@ -38,17 +39,20 @@ async def upload_portfolio(file: UploadFile = File(...)) -> dict:
         )
 
     try:
-        snapshot: PortfolioSnapshot = parse_fidelity_csv(raw)
+        snapshot = parse_fidelity_csv(raw)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    try:
-        config = load_config()
-        breakdown: AllocationBreakdown = compute_allocation(snapshot, config)
-    except (FileNotFoundError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail=f"Config error: {exc}") from exc
+    breakdown = compute_allocation(snapshot, config)
+    return UploadResponse(portfolio=snapshot, allocation=breakdown)
 
-    return {
-        "portfolio": snapshot.model_dump(),
-        "allocation": breakdown.model_dump(),
-    }
+
+@router.post("/allocation", response_model=AllocationBreakdown)
+def allocation(portfolio: PortfolioSnapshot, config: ConfigDep) -> AllocationBreakdown:
+    """
+    Re-group an already parsed portfolio with the current config.
+
+    Lets the UI refresh the breakdown after categories or assignments change
+    without uploading the CSV again.
+    """
+    return compute_allocation(portfolio, config)

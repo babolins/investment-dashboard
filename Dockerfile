@@ -1,4 +1,4 @@
-# Stage 1: Build the React frontend
+# Stage 1: Build the Svelte frontend
 FROM node:20-alpine AS frontend-builder
 
 WORKDIR /build
