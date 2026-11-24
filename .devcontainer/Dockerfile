@@ -13,11 +13,11 @@ RUN grep -rl yarnpkg /etc/apt/sources.list.d/ 2>/dev/null | xargs -r rm -f \
 # uv (same source as the production Dockerfile)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# Node 20 (matches the production frontend build). Copied in here rather than
+# Node 24 (matches the production frontend build). Copied in here rather than
 # installed by a dev container feature, because features run after this file
 # and could re-grant sudo after the lockdown below.
-COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
-COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node:24-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:24-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
  && node --version && npm --version

@@ -15,5 +15,4 @@ echo "==> Installing frontend dependencies (npm)"
 
 echo
 echo "Dev container ready. Start the app with:"
-echo "  backend:  cd backend && uv run uvicorn app.main:app --reload --port 8000"
-echo "  frontend: cd frontend && npm run dev"
+echo "  ./run.sh"
