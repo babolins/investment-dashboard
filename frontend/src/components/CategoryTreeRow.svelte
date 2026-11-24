@@ -3,25 +3,24 @@
   import CategoryTreeRow from "./CategoryTreeRow.svelte";
   import LevelHint from "./LevelHint.svelte";
   import RowEditor from "./RowEditor.svelte";
+  import { FALLBACK_COLOR } from "../lib/categories";
   import type { TreeNode } from "../lib/hierarchy";
 
   let { node }: { node: TreeNode } = $props();
 
   const manager = useManager();
 
-  const isGroup = $derived(node.kind === "group");
+  const isParent = $derived(node.children.length > 0);
   const editing = $derived(manager.editing === node.name);
   const parent = $derived(
-    (isGroup ? manager.config.groups : manager.config.categories).find((n) => n.name === node.name)
-      ?.parent ?? "",
+    manager.config.categories.find((c) => c.name === node.name)?.parent ?? "",
   );
-  const count = $derived(node.kind === "group" ? node.children.length : 0);
-  const showDrop = $derived(isGroup && manager.dragged !== null && manager.canDropOn(node.name));
+  const showDrop = $derived(manager.dragged !== null && manager.canDropOn(node.name));
 
   async function onMove(e: Event & { currentTarget: HTMLSelectElement }) {
     const select = e.currentTarget;
     // An uncontrolled select would otherwise keep showing a move that did not happen.
-    if (!(await manager.move(node, select.value || null))) select.value = parent;
+    if (!(await manager.move(node.name, select.value || null))) select.value = parent;
   }
 </script>
 
@@ -32,30 +31,30 @@
       "row",
       { "drop-ok": showDrop, "drop-over": showDrop && manager.overTarget === node.name },
     ]}
-    class:dragging={manager.dragged?.name === node.name}
+    class:dragging={manager.dragged === node.name}
     role="group"
     aria-label={node.name}
     draggable={!editing && !manager.busy}
-    ondragstart={(e) => manager.startDrag(node, e)}
+    ondragstart={(e) => manager.startDrag(node.name, e)}
     ondragend={manager.endDrag}
-    ondragover={isGroup ? (e) => manager.dragOver(e, node.name) : undefined}
-    ondragleave={isGroup ? (e) => manager.dragLeave(e, node.name) : undefined}
-    ondrop={isGroup ? (e) => manager.drop(e, node.name) : undefined}
+    ondragover={(e) => manager.dragOver(e, node.name)}
+    ondragleave={(e) => manager.dragLeave(e, node.name)}
+    ondrop={(e) => manager.drop(e, node.name)}
   >
-    {#if node.kind === "category"}
-      <span class="dot" style:background={node.color} aria-hidden="true"></span>
+    {#if isParent}
+      <span class="parent-marker" aria-hidden="true">▸</span>
     {:else}
-      <span class="folder" aria-hidden="true">▸</span>
+      <span class="dot" style:background={node.color ?? FALLBACK_COLOR} aria-hidden="true"></span>
     {/if}
     <strong class="name">{node.name}</strong>
     {#if !editing}
-      {#if node.kind === "category"}
-        <span class="meta">{node.buySymbol}</span>
-      {:else}
-        <span class="meta">
-          {count === 0 ? "empty" : `${count} ${count === 1 ? "item" : "items"}`}
-        </span>
-      {/if}
+      <span class="meta">
+        {#if isParent}
+          {node.children.length} {node.children.length === 1 ? "sub-category" : "sub-categories"}
+        {:else}
+          {node.buySymbol ?? ""}
+        {/if}
+      </span>
       <span class="meta">{node.target === null ? "—" : `${node.target}%`}</span>
       <select
         aria-label="Move {node.name} to"
@@ -65,8 +64,8 @@
         onchange={onMove}
       >
         <option value="">Top level</option>
-        {#each manager.moveTargets(node) as g (g)}
-          <option value={g}>{g}</option>
+        {#each manager.moveTargets(node.name) as t (t)}
+          <option value={t}>{t}</option>
         {/each}
       </select>
       <button
@@ -82,7 +81,7 @@
         type="button"
         class="secondary"
         disabled={manager.busy}
-        onclick={() => manager.remove(node)}
+        onclick={() => manager.remove(node.name)}
         aria-label="Delete {node.name}"
       >
         Delete
@@ -96,7 +95,7 @@
   {#if manager.rowError?.name === node.name}
     <p class="error-msg" role="alert">{manager.rowError.message}</p>
   {/if}
-  {#if node.kind === "group" && node.children.length > 0}
+  {#if isParent}
     <ul class="tree">
       {#each node.children as child (child.name)}
         <CategoryTreeRow node={child} />
@@ -142,7 +141,7 @@
     color: #555;
     font-size: 0.9rem;
   }
-  .folder {
+  .parent-marker {
     width: 0.8rem;
     color: #555;
     flex: none;

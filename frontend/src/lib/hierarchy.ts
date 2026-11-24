@@ -1,19 +1,25 @@
 /**
- * Target planning over the group/category tree.
+ * Target planning over the category tree.
  *
- * Groups contain categories and other groups; categories are the leaves that hold investments. Every
- * node's target is a "% of parent" share: top-level nodes are a % of the portfolio, nodes inside a
- * group are a % of that group. A category's whole-portfolio percent is the product of the shares down
- * its path (US Stocks 70% of Stocks, Stocks 60% of the portfolio -> 42%). Each level's shares should
- * total 100, which guarantees the leaves total 100 too.
+ * Categories contain categories. A category with sub-categories is a planning level; one without is a
+ * leaf, which is where investments are assigned. Every node's target is a "% of parent" share:
+ * top-level nodes are a % of the portfolio, nested nodes a % of their parent. A leaf's
+ * whole-portfolio percent is the product of the shares down its path (US Stocks 70% of Stocks,
+ * Stocks 60% of the portfolio -> 42%). Each level's shares should total 100, which guarantees the
+ * leaves total 100 too.
  *
- * Everything here is pure and keyed by node name (names are unique across groups and categories).
+ * Everything here is pure and keyed by category name (unique across the config).
  */
 import type { ConfigSummary } from "../types";
 
-export type TreeNode =
-  | { kind: "group"; name: string; target: number | null; children: TreeNode[] }
-  | { kind: "category"; name: string; target: number | null; color: string; buySymbol: string };
+export interface TreeNode {
+  name: string;
+  target: number | null;
+  buySymbol: string | null;
+  color: string | null;
+  /** Empty for a leaf. */
+  children: TreeNode[];
+}
 
 /** Node name -> share (% of parent); null means unset and counts as 0. */
 export type Shares = Record<string, number | null>;
@@ -25,69 +31,57 @@ const num = (v: number | null | undefined): number =>
   typeof v === "number" && Number.isFinite(v) ? v : 0;
 
 /**
- * The config as a tree. Within a parent, groups come first, then categories, each in config order.
- * A parent naming no group is treated as top level, and groups caught in a cycle are skipped rather
- * than recursing forever (the backend rejects both, so this only guards against malformed input).
+ * The config as a tree, in config order within each parent. A parent naming no category is treated
+ * as top level, and categories caught in a cycle are skipped rather than recursing forever (the
+ * backend rejects both, so this only guards against malformed input).
  */
 export function buildTree(config: ConfigSummary): TreeNode[] {
-  const names = new Set(config.groups.map((g) => g.name));
+  const names = new Set(config.categories.map((c) => c.name));
   const parentOf = (parent: string | null): string | null =>
     parent !== null && names.has(parent) ? parent : null;
 
-  const build = (parent: string | null, seen: Set<string>): TreeNode[] => [
-    ...config.groups
-      .filter((g) => parentOf(g.parent) === parent && !seen.has(g.name))
-      .map((g): TreeNode => ({
-        kind: "group",
-        name: g.name,
-        target: g.target,
-        children: build(g.name, new Set([...seen, g.name])),
-      })),
-    ...config.categories
-      .filter((c) => parentOf(c.parent) === parent)
-      .map((c): TreeNode => ({
-        kind: "category",
+  const build = (parent: string | null, seen: Set<string>): TreeNode[] =>
+    config.categories
+      .filter((c) => parentOf(c.parent) === parent && !seen.has(c.name))
+      .map((c) => ({
         name: c.name,
         target: c.target,
-        color: c.color,
         buySymbol: c.buy_symbol,
-      })),
-  ];
+        color: c.color,
+        children: build(c.name, new Set([...seen, c.name])),
+      }));
   return build(null, new Set());
 }
 
-/** The tree without groups that have no category anywhere below them. */
-export function prunedTree(nodes: TreeNode[]): TreeNode[] {
-  return nodes.flatMap((node): TreeNode[] => {
-    if (node.kind === "category") return [node];
-    const children = prunedTree(node.children);
-    return children.length > 0 ? [{ ...node, children }] : [];
-  });
+/** Names of the categories no other category is inside, in config order. */
+export function leafNames(config: ConfigSummary): string[] {
+  const parents = new Set(config.categories.map((c) => c.parent));
+  return config.categories.map((c) => c.name).filter((name) => !parents.has(name));
 }
 
-/** Names of every group below `group` (not itself), in config order: invalid "Move to" targets. */
-export function descendantGroups(config: ConfigSummary, group: string): string[] {
+/** Names of every category below `name` (not itself), in config order: invalid "Move to" targets. */
+export function descendants(config: ConfigSummary, name: string): string[] {
   const found = new Set<string>();
-  const pending = [group];
+  const pending = [name];
   while (pending.length > 0) {
     const parent = pending.pop();
-    for (const g of config.groups) {
-      if (g.parent === parent && g.name !== group && !found.has(g.name)) {
-        found.add(g.name);
-        pending.push(g.name);
+    for (const c of config.categories) {
+      if (c.parent === parent && c.name !== name && !found.has(c.name)) {
+        found.add(c.name);
+        pending.push(c.name);
       }
     }
   }
-  return config.groups.map((g) => g.name).filter((name) => found.has(name));
+  return config.categories.map((c) => c.name).filter((n) => found.has(n));
 }
 
-/** The configured default target of every node (groups and categories). */
+/** The configured default target of every node. */
 export function defaultShares(nodes: TreeNode[]): Shares {
   const shares: Shares = {};
   const visit = (level: TreeNode[]) => {
     for (const node of level) {
       shares[node.name] = node.target;
-      if (node.kind === "group") visit(node.children);
+      visit(node.children);
     }
   };
   visit(nodes);
@@ -101,20 +95,20 @@ export function portfolioPercents(nodes: TreeNode[], shares: Shares): Record<str
     for (const node of level) {
       const percent = (parentPercent * num(shares[node.name])) / 100;
       percents[node.name] = percent;
-      if (node.kind === "group") visit(node.children, percent);
+      visit(node.children, percent);
     }
   };
   visit(nodes, 100);
   return percents;
 }
 
-/** Whole-portfolio percent of each category only (the rebalance payload). Not rounded. */
-export function categoryTargets(nodes: TreeNode[], shares: Shares): Record<string, number> {
+/** Whole-portfolio percent of each leaf only (the rebalance payload). Not rounded. */
+export function leafTargets(nodes: TreeNode[], shares: Shares): Record<string, number> {
   const percents = portfolioPercents(nodes, shares);
   const targets: Record<string, number> = {};
   const visit = (level: TreeNode[]) => {
     for (const node of level) {
-      if (node.kind === "category") targets[node.name] = percents[node.name];
+      if (node.children.length === 0) targets[node.name] = percents[node.name];
       else visit(node.children);
     }
   };
@@ -142,7 +136,7 @@ function levelError(label: string, nodes: TreeNode[], shares: Shares): string | 
 }
 
 /**
- * Problems per level, keyed by the parent group's name ("" for the top level). Only levels whose
+ * Problems per level, keyed by the parent category's name ("" for the top level). Only levels whose
  * shares are out of range or don't total 100 appear. Empty levels are ignored.
  */
 export function siblingErrors(nodes: TreeNode[], shares: Shares): Record<string, string> {
@@ -151,7 +145,7 @@ export function siblingErrors(nodes: TreeNode[], shares: Shares): Record<string,
     if (level.length === 0) return;
     const error = levelError(label, level, shares);
     if (error) errors[key] = error;
-    for (const node of level) if (node.kind === "group") check(node.children, node.name, node.name);
+    for (const node of level) check(node.children, node.name, node.name);
   };
   check(nodes, "", "Top level");
   return errors;
@@ -160,7 +154,6 @@ export function siblingErrors(nodes: TreeNode[], shares: Shares): Record<string,
 function findLevel(nodes: TreeNode[], name: string): TreeNode[] | null {
   if (nodes.some((node) => node.name === name)) return nodes;
   for (const node of nodes) {
-    if (node.kind !== "group") continue;
     const found = findLevel(node.children, name);
     if (found) return found;
   }
@@ -169,7 +162,7 @@ function findLevel(nodes: TreeNode[], name: string): TreeNode[] | null {
 
 /**
  * Sets `name`'s share. If it has exactly one sibling and the value is within 0-100, the sibling
- * gets the remainder (2 dp). Pass the pruned tree so empty groups don't count as siblings.
+ * gets the remainder (2 dp).
  */
 export function withPairFill(
   nodes: TreeNode[],

@@ -35,6 +35,16 @@ describe("BuyGuidance", () => {
     expect((bnd.querySelector(".guidance-bar") as HTMLElement).style.width).toBe("69.8%");
   });
 
+  it("shows just the category name when there is no buy symbol", () => {
+    const [first, ...rest] = rebalance.recommendations;
+    const result = { ...rebalance, recommendations: [{ ...first, symbol: null }, ...rest] };
+    const { container } = render(BuyGuidance, { props: { result, colors } });
+    const label = container.querySelector(".guidance-row .guidance-label") as HTMLElement;
+    expect(label.querySelector("strong")).toHaveTextContent("US Stocks");
+    expect(label.querySelector(".bucket-name")).toBeNull();
+    expect(label.textContent).not.toMatch(/[()]|null/);
+  });
+
   it("shows the post-trade allocation with target markers", () => {
     const { container } = render(BuyGuidance, { props: { result: rebalance, colors } });
     const rows = Array.from(container.querySelectorAll(".post-trade-row"));

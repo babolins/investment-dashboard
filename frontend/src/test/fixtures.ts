@@ -3,7 +3,7 @@
  *
  * The numbers are internally consistent: `rebalance` is what the backend returns for
  * `allocation` with a $1,000 investment and the `config` category targets.
- * `groupedConfig` is the same categories arranged in a group (42/18/40 of the portfolio).
+ * `nestedConfig` is the same leaves nested under Stocks (42/18/40 of the portfolio).
  */
 import type {
   AllocationBreakdown,
@@ -105,7 +105,6 @@ export const allocationWithUnassigned: AllocationBreakdown = {
 // assignmentLabel(assignmentOf(config, symbol)): FZROX -> "US Stocks 70% · International 30%",
 //   SPAXX -> "Excluded", MYSTERY -> "Unassigned"
 export const config: ConfigSummary = {
-  groups: [],
   categories: [
     { name: "US Stocks", buy_symbol: "VTI", parent: null, target: 48, color: "#2a78d6" },
     { name: "International", buy_symbol: "VXUS", parent: null, target: 32, color: "#eb6834" },
@@ -123,12 +122,12 @@ export const config: ConfigSummary = {
 
 // Stocks 60% of the portfolio, split US 70 / International 30; Bonds 40% at top level.
 // Whole-portfolio percents: Stocks 60, US Stocks 42, International 18, Bonds 40.
-export const groupedConfig: ConfigSummary = {
-  groups: [{ name: "Stocks", parent: null, target: 60 }],
+export const nestedConfig: ConfigSummary = {
   categories: [
-    { name: "US Stocks", buy_symbol: "VTI", parent: "Stocks", target: 70, color: "#2a78d6" },
-    { name: "International", buy_symbol: "VXUS", parent: "Stocks", target: 30, color: "#eb6834" },
-    { name: "Bonds", buy_symbol: "BND", parent: null, target: 40, color: "#1baf7a" },
+    { name: "Stocks", parent: null, target: 60, buy_symbol: null, color: null },
+    { name: "US Stocks", parent: "Stocks", target: 70, buy_symbol: "VTI", color: "#2a78d6" },
+    { name: "International", parent: "Stocks", target: 30, buy_symbol: "VXUS", color: "#eb6834" },
+    { name: "Bonds", parent: null, target: 40, buy_symbol: "BND", color: "#1baf7a" },
   ],
   assignments: config.assignments,
   exclusions: ["SPAXX"],

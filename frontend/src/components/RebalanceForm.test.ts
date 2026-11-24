@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchRebalance } from "../services/api";
-import { allocation, config, groupedConfig, rebalance } from "../test/fixtures";
+import { allocation, config, nestedConfig, rebalance } from "../test/fixtures";
 import type { Category, ConfigSummary, RebalanceResult } from "../types";
 import RebalanceForm from "./RebalanceForm.svelte";
 
@@ -17,18 +17,17 @@ const US = "US Stocks % of portfolio";
 const INTL = "International % of portfolio";
 const BONDS = "Bonds % of portfolio";
 
-// Grouped labels: Stocks and Bonds at the top level, the two stock funds inside Stocks.
+// Nested labels: Stocks and Bonds at the top level, the two stock funds inside Stocks.
 const STOCKS = "Stocks % of portfolio";
 const US_IN = "US Stocks % of Stocks";
 const INTL_IN = "International % of Stocks";
 const BONDS_TOP = "Bonds % of portfolio";
 
-// groupedConfig with the Stocks and Bonds defaults removed, so typing is always a change.
-const blankGrouped: ConfigSummary = {
-  ...groupedConfig,
-  groups: [{ name: "Stocks", parent: null, target: null }],
-  categories: groupedConfig.categories.map((c) =>
-    c.name === "Bonds" ? { ...c, target: null } : c,
+// nestedConfig with the Stocks and Bonds defaults removed, so typing is always a change.
+const blankNested: ConfigSummary = {
+  ...nestedConfig,
+  categories: nestedConfig.categories.map((c) =>
+    c.name === "Stocks" || c.name === "Bonds" ? { ...c, target: null } : c,
   ),
 };
 
@@ -123,9 +122,9 @@ describe("RebalanceForm", () => {
     });
   });
 
-  describe("grouped config", () => {
-    it("nests children under their group with '% of <group>' labels", () => {
-      renderForm(groupedConfig);
+  describe("nested config", () => {
+    it("nests children under their parent with '% of <parent>' labels", () => {
+      renderForm(nestedConfig);
       const stocks = screen.getByRole("group", { name: "Stocks" });
       expect(within(stocks).getByLabelText(US_IN)).toHaveValue(70);
       expect(within(stocks).getByLabelText(INTL_IN)).toHaveValue(30);
@@ -135,7 +134,7 @@ describe("RebalanceForm", () => {
     });
 
     it("shows whole-portfolio readouts on nested nodes only", () => {
-      renderForm(groupedConfig);
+      renderForm(nestedConfig);
       expect(readout("42.0%")).toBeInTheDocument();
       expect(readout("18.0%")).toBeInTheDocument();
       expect(readout("60.0%")).toBeNull(); // Stocks is top level
@@ -143,7 +142,7 @@ describe("RebalanceForm", () => {
     });
 
     it("pair-fills Bonds when Stocks is typed and updates the readouts", async () => {
-      const { user } = renderForm(blankGrouped);
+      const { user } = renderForm(blankNested);
       await fill(user, input(STOCKS), "60");
       expect(input(BONDS_TOP)).toHaveValue(40);
       expect(readout("42.0%")).toBeInTheDocument();
@@ -151,29 +150,19 @@ describe("RebalanceForm", () => {
     });
 
     it("pair-fills within a nested level without touching the top level", async () => {
-      const { user } = renderForm(groupedConfig);
+      const { user } = renderForm(nestedConfig);
       await fill(user, input(US_IN), "80");
       expect(input(INTL_IN)).toHaveValue(20);
       expect(input(STOCKS)).toHaveValue(60);
       expect(input(BONDS_TOP)).toHaveValue(40);
     });
 
-    it("does not render a group with no category below it", () => {
-      const withEmpty: ConfigSummary = {
-        ...groupedConfig,
-        groups: [...groupedConfig.groups, { name: "Empty", parent: null, target: 50 }],
-      };
-      renderForm(withEmpty);
-      expect(screen.queryByLabelText("Empty % of portfolio")).toBeNull();
-      expect(screen.queryByText(/Top level: must add up/)).toBeNull();
-    });
-
     it("re-labels a category moved to the top level and keeps other edits", async () => {
-      const { user, rerender } = renderForm(groupedConfig);
+      const { user, rerender } = renderForm(nestedConfig);
       await fill(user, input(BONDS_TOP), "30");
       const moved: ConfigSummary = {
-        ...groupedConfig,
-        categories: groupedConfig.categories.map((c) =>
+        ...nestedConfig,
+        categories: nestedConfig.categories.map((c) =>
           c.name === "International" ? { ...c, parent: null } : c,
         ),
       };
@@ -186,7 +175,7 @@ describe("RebalanceForm", () => {
 
   describe("level errors", () => {
     it("shows a nested level's message beside that level only, with aria wiring", async () => {
-      const { user } = renderForm(groupedConfig);
+      const { user } = renderForm(nestedConfig);
       await fill(user, input(INTL_IN), "");
       const stocks = screen.getByRole("group", { name: "Stocks" });
       const message = within(stocks).getByText("Stocks: must add up to 100% (currently 70.0%).");
@@ -201,7 +190,7 @@ describe("RebalanceForm", () => {
     });
 
     it("shows a top-level message for the top level", async () => {
-      const { user } = renderForm(groupedConfig);
+      const { user } = renderForm(nestedConfig);
       await fill(user, input(BONDS_TOP), "");
       expect(screen.getByText("Top level: must add up to 100% (currently 60.0%).")).toBeVisible();
       expect(input(STOCKS)).toHaveAttribute("aria-invalid", "true");
@@ -210,7 +199,7 @@ describe("RebalanceForm", () => {
     });
 
     it("reports an out-of-range share instead of the total", async () => {
-      const { user } = renderForm(groupedConfig);
+      const { user } = renderForm(nestedConfig);
       await fill(user, input(US_IN), "150");
       expect(
         screen.getByText("Stocks: each share must be between 0% and 100%."),
@@ -253,17 +242,18 @@ describe("RebalanceForm", () => {
       expect(input(US)).toHaveValue(48);
     });
 
-    it("gives a new category without a target an empty input", async () => {
-      const { rerender } = renderForm();
+    it("shows a new childless category without a target as an empty input", async () => {
+      const { rerender, levelErrors } = renderForm();
       const added: Category = {
         name: "Gold",
-        buy_symbol: "GLD",
+        buy_symbol: null,
         parent: null,
         target: null,
         color: "#eda100",
       };
       await rerender({ config: { ...config, categories: [...config.categories, added] } });
       expect(input("Gold % of portfolio")).toHaveValue(null);
+      expect(levelErrors()).toHaveLength(0);
     });
 
     it("drops the input of a removed category and re-checks the level", async () => {
@@ -288,18 +278,6 @@ describe("RebalanceForm", () => {
     it("shows a hint and no submit button when there are no categories", () => {
       render(RebalanceForm, {
         props: { allocation, config: { ...config, categories: [] }, onResult: vi.fn() },
-      });
-      expect(screen.getByText("Add a category to set targets.")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
-    });
-
-    it("treats a group without categories as empty", () => {
-      render(RebalanceForm, {
-        props: {
-          allocation,
-          config: { ...groupedConfig, categories: [] },
-          onResult: vi.fn(),
-        },
       });
       expect(screen.getByText("Add a category to set targets.")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
@@ -380,9 +358,9 @@ describe("RebalanceForm", () => {
       });
     });
 
-    it("sends whole-portfolio targets for categories only when grouped", async () => {
+    it("sends whole-portfolio targets for leaves only when nested", async () => {
       mockFetch.mockResolvedValue(rebalance);
-      const { user, amount, onResult } = renderForm(groupedConfig);
+      const { user, amount, onResult } = renderForm(nestedConfig);
       await fill(user, amount, "5000");
       await submit(user);
 
@@ -390,7 +368,7 @@ describe("RebalanceForm", () => {
       const [passedAllocation, request] = mockFetch.mock.calls[0];
       expect(passedAllocation).toBe(allocation);
       expect(request.investment_amount).toBe(5000);
-      expect(Object.keys(request.target).sort()).toEqual(["Bonds", "International", "US Stocks"]);
+      expect(Object.keys(request.target).sort()).toEqual(["Bonds", "International", "US Stocks"]); // no "Stocks"
       expect(request.target["US Stocks"]).toBeCloseTo(42);
       expect(request.target.International).toBeCloseTo(18);
       expect(request.target.Bonds).toBeCloseTo(40);
@@ -398,7 +376,7 @@ describe("RebalanceForm", () => {
 
     it("uses edited nested shares in the request", async () => {
       mockFetch.mockResolvedValue(rebalance);
-      const { user, amount, onResult } = renderForm(blankGrouped);
+      const { user, amount, onResult } = renderForm(blankNested);
       await fill(user, amount, "100");
       await fill(user, input(STOCKS), "50"); // fills Bonds 50
       await fill(user, input(US_IN), "80"); // fills International 20

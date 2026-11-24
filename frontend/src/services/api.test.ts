@@ -1,18 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createCategory,
-  createGroup,
   deleteCategory,
-  deleteGroup,
   fetchAllocation,
   fetchConfig,
   fetchRebalance,
   setAssignment,
   updateCategory,
-  updateGroup,
   uploadPortfolio,
 } from "./api";
-import { allocation, config, groupedConfig, portfolio, rebalance } from "../test/fixtures";
+import { allocation, config, portfolio, rebalance } from "../test/fixtures";
 
 const fetchMock = vi.fn();
 
@@ -126,6 +123,12 @@ describe("updateCategory", () => {
     expect(lastCall()[1].body).toBe('{"parent":null}');
   });
 
+  it("serialises an explicit null buy_symbol (clears it)", async () => {
+    respond(config);
+    await updateCategory("Stocks", { buy_symbol: null });
+    expect(lastCall()[1].body).toBe('{"buy_symbol":null}');
+  });
+
   it("encodes reserved characters in the name", async () => {
     respond(config);
     await updateCategory("R&D #1?", { name: "New" });
@@ -139,47 +142,6 @@ describe("deleteCategory", () => {
     await expect(deleteCategory("US Stocks")).resolves.toEqual(config);
     const [url, init] = lastCall();
     expect(url).toBe("/api/categories/US%20Stocks");
-    expect(init.method).toBe("DELETE");
-    expect(init.body).toBeUndefined();
-  });
-});
-
-describe("createGroup", () => {
-  it("POSTs the input to /api/groups and accepts a 201", async () => {
-    respond(groupedConfig, 201);
-    const input = { name: "Stocks", parent: null, target: 60 };
-    await expect(createGroup(input)).resolves.toEqual(groupedConfig);
-    const [url, init] = lastCall();
-    expect(url).toBe("/api/groups");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ "Content-Type": "application/json" });
-    expect(jsonBody(init)).toEqual(input);
-  });
-});
-
-describe("updateGroup", () => {
-  it("PATCHes the encoded group name with only the given keys", async () => {
-    respond(groupedConfig);
-    await expect(updateGroup("Fixed Income", { name: "Bonds" })).resolves.toEqual(groupedConfig);
-    const [url, init] = lastCall();
-    expect(url).toBe("/api/groups/Fixed%20Income");
-    expect(init.method).toBe("PATCH");
-    expect(jsonBody(init)).toEqual({ name: "Bonds" });
-  });
-
-  it("serialises explicit null parent and target", async () => {
-    respond(groupedConfig);
-    await updateGroup("Stocks", { parent: null, target: null });
-    expect(lastCall()[1].body).toBe('{"parent":null,"target":null}');
-  });
-});
-
-describe("deleteGroup", () => {
-  it("DELETEs the encoded name without a body", async () => {
-    respond(config);
-    await expect(deleteGroup("Fixed Income")).resolves.toEqual(config);
-    const [url, init] = lastCall();
-    expect(url).toBe("/api/groups/Fixed%20Income");
     expect(init.method).toBe("DELETE");
     expect(init.body).toBeUndefined();
   });

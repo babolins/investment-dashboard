@@ -1,13 +1,12 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { deleteCategory, deleteGroup, updateCategory, updateGroup } from "../services/api";
-  import { buildTree, descendantGroups } from "../lib/hierarchy";
+  import { deleteCategory, updateCategory } from "../services/api";
+  import { buildTree, descendants, leafNames } from "../lib/hierarchy";
   import type { ConfigSummary } from "../types";
   import AddCategoryForm from "./AddCategoryForm.svelte";
-  import AddGroupForm from "./AddGroupForm.svelte";
   import CategoryTreeRow from "./CategoryTreeRow.svelte";
   import LevelHint from "./LevelHint.svelte";
-  import { provideManager, type NodeRef, type Patch } from "./managerContext";
+  import { provideManager, type Patch } from "./managerContext";
 
   interface Props {
     config: ConfigSummary;
@@ -16,26 +15,27 @@
 
   let { config, onChange }: Props = $props();
 
-  const MAX_CATEGORIES = 8;
+  const MAX_LEAVES = 8;
 
   const tree = $derived(buildTree(config));
-  const full = $derived(config.categories.length >= MAX_CATEGORIES);
+  // The cap is on leaves, which adding or moving can change either way, so the server enforces it.
+  const atLeafCap = $derived(leafNames(config).length >= MAX_LEAVES);
+  // Categories holding securities are leaves for good: nothing can be put inside them.
+  const held = $derived(new Set(Object.values(config.assignments).flatMap((w) => Object.keys(w))));
+  const containers = $derived(config.categories.map((c) => c.name).filter((n) => !held.has(n)));
 
-  let dragged = $state<NodeRef | null>(null);
-  let overTarget = $state<string | null>(null); // group name, or "" for the Top level zone
+  let dragged = $state<string | null>(null);
+  let overTarget = $state<string | null>(null); // category name, or "" for the Top level zone
   let editing = $state<string | null>(null);
   let busy = $state(false);
   let rowError = $state<{ name: string; message: string } | null>(null);
   let status = $state("");
 
-  const parentOf = (n: NodeRef) =>
-    (n.kind === "group" ? config.groups : config.categories).find((x) => x.name === n.name)
-      ?.parent ?? "";
+  const parentOf = (name: string) => config.categories.find((c) => c.name === name)?.parent ?? "";
 
-  const moveTargets = (n: NodeRef) => {
-    if (n.kind === "category") return config.groups.map((g) => g.name);
-    const blocked = new Set([n.name, ...descendantGroups(config, n.name)]);
-    return config.groups.map((g) => g.name).filter((g) => !blocked.has(g));
+  const moveTargets = (name: string) => {
+    const blocked = new Set([name, ...descendants(config, name)]);
+    return containers.filter((n) => !blocked.has(n));
   };
 
   // One rule for highlighting, accepting a drop and ignoring one. "" is the top level.
@@ -59,20 +59,16 @@
     }
   }
 
-  async function move(node: NodeRef, parent: string | null): Promise<boolean> {
+  async function move(name: string, parent: string | null): Promise<boolean> {
     status = "";
-    const ok = await run(node.name, async () => {
-      onChange(
-        node.kind === "group"
-          ? await updateGroup(node.name, { parent })
-          : await updateCategory(node.name, { parent }),
-      );
+    const ok = await run(name, async () => {
+      onChange(await updateCategory(name, { parent }));
     });
     if (!ok) return false;
-    status = `Moved "${node.name}" to ${parent ?? "the top level"}.`;
+    status = `Moved "${name}" to ${parent ?? "the top level"}.`;
     // The keyed row is recreated under its new parent, which drops keyboard focus.
     await tick();
-    document.querySelector<HTMLElement>(`[data-move="${CSS.escape(node.name)}"]`)?.focus();
+    document.querySelector<HTMLElement>(`[data-move="${CSS.escape(name)}"]`)?.focus();
     return true;
   }
 
@@ -97,12 +93,12 @@
     },
     moveTargets,
     canDropOn,
-    startDrag(node: NodeRef, e: DragEvent) {
-      dragged = { kind: node.kind, name: node.name };
+    startDrag(name: string, e: DragEvent) {
+      dragged = name;
       // Firefox won't start a drag without data; jsdom has no dataTransfer at all.
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", node.name);
+        e.dataTransfer.setData("text/plain", name);
       }
     },
     endDrag() {
@@ -124,19 +120,17 @@
     async drop(e: DragEvent, target: string) {
       if (!canDropOn(target)) return;
       e.preventDefault();
-      const node = dragged!;
+      const name = dragged!;
       // Reset here: re-parenting recreates the dragged row, so its dragend may never arrive.
       dragged = null;
       overTarget = null;
-      await move(node, target || null);
+      await move(name, target || null);
     },
     move,
-    async remove(node: NodeRef) {
+    async remove(name: string) {
       status = "";
-      await run(node.name, async () => {
-        onChange(
-          node.kind === "group" ? await deleteGroup(node.name) : await deleteCategory(node.name),
-        );
+      await run(name, async () => {
+        onChange(await deleteCategory(name));
       });
     },
     startEdit(name: string) {
@@ -150,13 +144,9 @@
     fail(name: string, message: string) {
       rowError = { name, message };
     },
-    async save(node: NodeRef, patch: Patch) {
-      await run(node.name, async () => {
-        onChange(
-          node.kind === "group"
-            ? await updateGroup(node.name, patch)
-            : await updateCategory(node.name, patch),
-        );
+    async save(name: string, patch: Patch) {
+      await run(name, async () => {
+        onChange(await updateCategory(name, patch));
         editing = null;
       });
     },
@@ -168,8 +158,9 @@
   <h2>Categories</h2>
   <p class="hint">
     Group your holdings into categories, then assign each holding in the table below. Targets are a
-    share of the parent group, or of the portfolio at the top level. Drag a row onto a group to move
-    it, or use its "Move to" menu.
+    share of the parent category, or of the portfolio at the top level. Securities are assigned to
+    categories with no sub-categories. Drag a row onto a category to move it, or use its "Move to"
+    menu.
   </p>
 
   <div
@@ -194,15 +185,16 @@
     </ul>
     <LevelHint label="Top level" nodes={tree} />
   {/if}
-  {#if config.groups.length > 0}
-    <p class="hint">Deleting a group: its children move up a level.</p>
+  {#if config.categories.some((c) => c.parent)}
+    <p class="hint">Deleting a category: its children move up a level.</p>
   {/if}
   <p role="status" class="hint">{status}</p>
 
-  <AddGroupForm {config} {onChange} />
-  <AddCategoryForm {config} {full} {onChange} />
-  {#if full}
-    <p class="hint">Maximum of {MAX_CATEGORIES} categories reached.</p>
+  <AddCategoryForm {config} parents={containers} {onChange} />
+  {#if atLeafCap}
+    <p class="hint">
+      Maximum of {MAX_LEAVES} leaf categories (categories with no sub-categories).
+    </p>
   {/if}
 </div>
 

@@ -11,12 +11,12 @@
 
   interface Props {
     config: ConfigSummary;
-    /** The category cap is reached: the form is disabled. */
-    full: boolean;
+    /** Categories that can hold others: every category except leaves holding securities. */
+    parents: string[];
     onChange: (config: ConfigSummary) => void;
   }
 
-  let { config, full, onChange }: Props = $props();
+  let { config, parents, onChange }: Props = $props();
 
   const uid = $props.id();
 
@@ -31,15 +31,15 @@
     event.preventDefault();
     const input = {
       name: name.trim(),
-      buy_symbol: symbol.trim().toUpperCase(),
+      buy_symbol: symbol.trim().toUpperCase() || null,
       target: parseTarget(target),
       parent: parent || null,
     };
     // Only for add: a rename's collisions are left to the server (case-only renames are legal).
     error =
-      validateName(input.name, "category") ??
+      validateName(input.name) ??
       duplicateName(config, input.name) ??
-      validateSymbol(input.buy_symbol) ??
+      validateSymbol(input.buy_symbol ?? "") ??
       validateTarget(input.target);
     if (error) return;
     adding = true;
@@ -59,18 +59,24 @@
 <form class="add" novalidate onsubmit={add} aria-label="Add category">
   <div class="field">
     <label for="{uid}-name">Name</label>
-    <input id="{uid}-name" bind:value={name} disabled={full || adding} />
+    <input id="{uid}-name" bind:value={name} disabled={adding} />
   </div>
   <div class="field">
     <label for="{uid}-symbol">Buy symbol</label>
-    <input id="{uid}-symbol" class="short" bind:value={symbol} disabled={full || adding} />
+    <input
+      id="{uid}-symbol"
+      class="short"
+      placeholder="Optional"
+      bind:value={symbol}
+      disabled={adding}
+    />
   </div>
   <div class="field">
-    <label for="{uid}-parent">Group</label>
-    <select id="{uid}-parent" bind:value={parent} disabled={full || adding}>
+    <label for="{uid}-parent">Inside</label>
+    <select id="{uid}-parent" bind:value={parent} disabled={adding}>
       <option value="">Top level</option>
-      {#each config.groups as g (g.name)}
-        <option value={g.name}>{g.name}</option>
+      {#each parents as p (p)}
+        <option value={p}>{p}</option>
       {/each}
     </select>
   </div>
@@ -84,10 +90,10 @@
       max="100"
       step="any"
       bind:value={target}
-      disabled={full || adding}
+      disabled={adding}
     />
   </div>
-  <button type="submit" class="btn-primary" disabled={full || adding}>Add category</button>
+  <button type="submit" class="btn-primary" disabled={adding}>Add category</button>
   {#if error}
     <p class="error-msg" role="alert">{error}</p>
   {/if}

@@ -11,12 +11,13 @@
   let { node }: { node: TreeNode } = $props();
 
   const manager = useManager();
+  const uid = $props.id();
 
   // Drafts start from the node as it was when editing began; the editor is remounted per edit.
   // svelte-ignore state_referenced_locally
   const original = node;
   let name = $state(original.name);
-  let symbol = $state(original.kind === "category" ? original.buySymbol : "");
+  let symbol = $state(original.buySymbol ?? "");
   let target = $state<number | null>(original.target);
 
   function submit(event: SubmitEvent) {
@@ -27,33 +28,29 @@
       target: parseTarget(target),
     };
     const invalid =
-      validateName(next.name, original.kind) ??
-      (original.kind === "category" ? validateSymbol(next.buy_symbol) : null) ??
-      validateTarget(next.target);
+      validateName(next.name) ?? validateSymbol(next.buy_symbol) ?? validateTarget(next.target);
     if (invalid) return manager.fail(original.name, invalid);
 
     const patch: Patch = {};
     if (next.name !== original.name) patch.name = next.name;
-    if (original.kind === "category" && next.buy_symbol !== original.buySymbol) {
-      patch.buy_symbol = next.buy_symbol;
-    }
+    if (next.buy_symbol !== (original.buySymbol ?? "")) patch.buy_symbol = next.buy_symbol || null;
     if (next.target !== original.target) patch.target = next.target;
     if (Object.keys(patch).length === 0) return manager.cancelEdit();
-    return manager.save(original, patch);
+    return manager.save(original.name, patch);
   }
 </script>
 
 <!-- novalidate: the validators give one consistent inline message instead of native bubbles. -->
 <form class="edit" novalidate onsubmit={submit}>
   <input aria-label="Name for {original.name}" bind:value={name} disabled={manager.busy} />
-  {#if original.kind === "category"}
-    <input
-      aria-label="Buy symbol for {original.name}"
-      class="short"
-      bind:value={symbol}
-      disabled={manager.busy}
-    />
-  {/if}
+  <input
+    aria-label="Buy symbol for {original.name}"
+    aria-describedby="{uid}-symbol-hint"
+    class="short"
+    bind:value={symbol}
+    disabled={manager.busy}
+  />
+  <span id="{uid}-symbol-hint" class="hint">Used when this category holds securities.</span>
   <input
     aria-label="Default target for {original.name}"
     class="short"

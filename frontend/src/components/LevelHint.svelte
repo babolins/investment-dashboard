@@ -2,7 +2,7 @@
   import { defaultShares, levelTotal, type TreeNode } from "../lib/hierarchy";
 
   interface Props {
-    /** "Top level" or the parent group's name. */
+    /** "Top level" or the parent category's name. */
     label: string;
     nodes: TreeNode[];
   }

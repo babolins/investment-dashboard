@@ -29,8 +29,12 @@
       <div class="guidance-row">
         <div class="guidance-label">
           <span class="bucket-dot" style:background={colorOf(r.category)}></span>
-          <strong>{r.symbol}</strong>
-          <span class="bucket-name">({r.category})</span>
+          {#if r.symbol}
+            <strong>{r.symbol}</strong>
+            <span class="bucket-name">({r.category})</span>
+          {:else}
+            <strong>{r.category}</strong>
+          {/if}
         </div>
 
         <div class="guidance-bar-wrap">

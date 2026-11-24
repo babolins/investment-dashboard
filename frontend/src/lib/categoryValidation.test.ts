@@ -6,33 +6,33 @@ import {
   validateSymbol,
   validateTarget,
 } from "./categoryValidation";
-import { groupedConfig } from "../test/fixtures";
+import { nestedConfig } from "../test/fixtures";
 
 describe("validateName", () => {
   it("accepts an ordinary name", () => {
-    expect(validateName("Gold", "category")).toBeNull();
+    expect(validateName("Gold")).toBeNull();
   });
 
   it.each([
-    ["", /enter a group name/i],
+    ["", /enter a category name/i],
     ["x".repeat(41), /at most 40/],
     ["a/b", /"\/"/],
     ["Unassigned", /reserved/],
     ["EXCLUDED", /reserved/],
   ])("rejects %j", (name, message) => {
-    expect(validateName(name, "group")).toMatch(message);
+    expect(validateName(name)).toMatch(message);
   });
 
   it("allows exactly 40 characters", () => {
-    expect(validateName("x".repeat(40), "group")).toBeNull();
+    expect(validateName("x".repeat(40))).toBeNull();
   });
 });
 
 describe("validateSymbol", () => {
-  it.each(["VTI", "BRK.B", "A-B", "ABCDEFGHIJ"])("accepts %s", (s) => {
+  it.each(["", "VTI", "BRK.B", "A-B", "ABCDEFGHIJ"])("accepts %s", (s) => {
     expect(validateSymbol(s)).toBeNull();
   });
-  it.each(["", "vti", "not a symbol", "ABCDEFGHIJK"])("rejects %j", (s) => {
+  it.each(["vti", "not a symbol", "ABCDEFGHIJK"])("rejects %j", (s) => {
     expect(validateSymbol(s)).not.toBeNull();
   });
 });
@@ -47,10 +47,10 @@ describe("validateTarget", () => {
 });
 
 describe("duplicateName", () => {
-  it("matches groups and categories case-insensitively", () => {
-    expect(duplicateName(groupedConfig, "stocks")).toMatch(/already exists/);
-    expect(duplicateName(groupedConfig, "BONDS")).toMatch(/already exists/);
-    expect(duplicateName(groupedConfig, "Gold")).toBeNull();
+  it("matches any category, parent or leaf, case-insensitively", () => {
+    expect(duplicateName(nestedConfig, "stocks")).toMatch(/already exists/);
+    expect(duplicateName(nestedConfig, "BONDS")).toMatch(/already exists/);
+    expect(duplicateName(nestedConfig, "Gold")).toBeNull();
   });
 });
 

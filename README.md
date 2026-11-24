@@ -10,7 +10,7 @@ A self-hosted quarterly portfolio rebalancing tool that ingests a Fidelity CSV e
 - Categories managed in the UI: create, rename, set the ETF to buy and a default target, delete
 - Click a holding's category pill to assign it to one or more categories (split by %), exclude it, or leave it unassigned
 - Categories and assignments are saved to `config.yaml` (comments preserved); everything else — uploads, amounts, targets typed into the form — stays in the browser session
-- Group categories into hierarchies (e.g. Stocks → US / International) by drag & drop or a "Move to" menu
+- Nest categories inside each other (e.g. Stocks → US / International) by drag & drop or a "Move to" menu; securities are assigned to the innermost categories
 - Rebalance calculator: enter the investment amount and each level's split as "% of parent" (e.g. Stocks 60% → US 70%) — the app works out each category's share of the portfolio (42%) → buy guidance in dollars and % of investment
 
 ## Non-goals (v1)

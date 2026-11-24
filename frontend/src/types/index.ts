@@ -16,40 +16,25 @@ export interface PortfolioSnapshot {
   snapshot_date: string | null;
 }
 
-/** A container for categories and other groups; holds no holdings and has no buy symbol or colour. */
-export interface Group {
+/** A user-defined category as stored in config.yaml. Categories can contain categories. */
+export interface Category {
   name: string;
-  /** Enclosing group, or null for the top level. */
+  /** Enclosing category, or null for the top level. */
   parent: string | null;
   /** Default target as a percent of the parent (of the portfolio at the top level). */
   target: number | null;
-}
-
-/** The editable fields of a group. */
-export interface GroupInput {
-  name: string;
-  parent: string | null;
-  target: number | null;
-}
-
-/** A user-defined category (asset class) as stored in config.yaml. */
-export interface Category {
-  name: string;
-  /** Enclosing group, or null for the top level. */
-  parent: string | null;
   /** ETF suggested when buying into this category. */
-  buy_symbol: string;
-  /** Default target percent of the parent that pre-fills the rebalance form. */
-  target: number | null;
-  color: string;
+  buy_symbol: string | null;
+  /** Set for every leaf (a category with no sub-categories). */
+  color: string | null;
 }
 
 /** The editable fields of a category. */
 export interface CategoryInput {
   name: string;
-  buy_symbol: string;
-  target: number | null;
   parent?: string | null;
+  buy_symbol?: string | null;
+  target: number | null;
 }
 
 export interface CategoryAllocation {
@@ -82,7 +67,7 @@ export interface RebalanceRequest {
 
 export interface BuyRecommendation {
   category: string;
-  symbol: string;
+  symbol: string | null;
   target_percent: number;
   current_percent: number;
   current_value: number;
@@ -98,7 +83,6 @@ export interface RebalanceResult {
 }
 
 export interface ConfigSummary {
-  groups: Group[];
   categories: Category[];
   /** SYMBOL -> {category: weight 0-1}; direct mappings appear as {category: 1}. */
   assignments: Record<string, Record<string, number>>;

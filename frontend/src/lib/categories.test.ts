@@ -7,17 +7,28 @@ import {
   symbolsByCategory,
   toWeights,
 } from "./categories";
-import { colors, config } from "../test/fixtures";
+import { colors, config, nestedConfig } from "../test/fixtures";
 import type { ConfigSummary } from "../types";
 
 describe("colorsByCategory", () => {
-  it("maps each category name to its colour", () => {
+  it("maps each leaf name to its colour", () => {
     expect(colorsByCategory(config)).toEqual(colors);
+  });
+
+  it("omits parents and leaves without a colour", () => {
+    expect(colorsByCategory(nestedConfig)).toEqual(colors);
+    const c: ConfigSummary = {
+      ...nestedConfig,
+      categories: [
+        ...nestedConfig.categories,
+        { name: "Plain", parent: null, target: null, buy_symbol: null, color: null },
+      ],
+    };
+    expect(colorsByCategory(c)).toEqual(colors);
   });
 
   it("copes with a category named like an Object property", () => {
     const c: ConfigSummary = {
-      groups: [],
       categories: [
         { name: "__proto__", buy_symbol: "X", parent: null, target: null, color: "#111111" },
       ],

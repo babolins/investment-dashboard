@@ -1,10 +1,9 @@
 <script lang="ts">
   import {
     buildTree,
-    categoryTargets,
     defaultShares,
+    leafTargets,
     portfolioPercents,
-    prunedTree,
     siblingErrors,
     withPairFill,
     type TreeNode,
@@ -32,7 +31,7 @@
   // parent). Pair fill writes only the sibling it actually changed, so untouched rows keep
   // following their defaults.
   let edits = $state<Record<string, number | null>>({});
-  const tree = $derived(prunedTree(buildTree(config)));
+  const tree = $derived(buildTree(config));
   const shares = $derived({ ...defaultShares(tree), ...edits });
   const percents = $derived(portfolioPercents(tree, shares));
   const errors = $derived(siblingErrors(tree, shares));
@@ -43,7 +42,7 @@
     const visit = (nodes: TreeNode[]) => {
       for (const n of nodes) {
         map[n.name] = Object.keys(map).length;
-        if (n.kind === "group") visit(n.children);
+        if (n.children.length > 0) visit(n.children);
       }
     };
     visit(tree);
@@ -73,7 +72,7 @@
     loading = true;
     try {
       // Whole-portfolio % per category; empty inputs count as 0.
-      const target = categoryTargets(tree, shares);
+      const target = leafTargets(tree, shares);
       onResult(await fetchRebalance(allocation, { investment_amount: amount, target }));
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : "Unknown error";
@@ -89,7 +88,7 @@
   {#each nodes as n (n.name)}
     {@const id = `target-${indexes[n.name]}`}
     <div class="alloc-node">
-      <div class="alloc-row" class:alloc-row-group={n.kind === "group"}>
+      <div class="alloc-row" class:alloc-row-parent={n.children.length > 0}>
         <label for={id}><strong>{n.name}</strong> % of <span>{parent ?? "portfolio"}</span></label>
         <input
           {id}
@@ -102,14 +101,14 @@
           bind:value={() => shares[n.name], (v) => setShare(n.name, v)}
         />
         <span>%</span>
-        {#if n.kind === "category"}
+        {#if n.children.length === 0 && n.buySymbol}
           <span class="alloc-symbol">{n.buySymbol}</span>
         {/if}
         {#if parent !== null}
           <span class="alloc-readout">= {formatPct(percents[n.name])} of portfolio</span>
         {/if}
       </div>
-      {#if n.kind === "group"}
+      {#if n.children.length > 0}
         <div class="alloc-children" role="group" aria-label={n.name}>
           {@render level(n.children, n.name)}
         </div>
@@ -174,7 +173,7 @@
     padding-left: 0.75rem;
     border-left: 2px solid #e0e0e0;
   }
-  .alloc-row-group > label {
+  .alloc-row-parent > label {
     font-weight: 700;
   }
   .alloc-symbol {

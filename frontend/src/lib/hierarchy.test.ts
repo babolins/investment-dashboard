@@ -1,42 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTree,
-  categoryTargets,
   defaultShares,
-  descendantGroups,
+  descendants,
+  leafNames,
+  leafTargets,
   levelTotal,
   portfolioPercents,
-  prunedTree,
   siblingErrors,
   withPairFill,
   type Shares,
   type TreeNode,
 } from "./hierarchy";
-import { groupedConfig } from "../test/fixtures";
-import type { Category, ConfigSummary, Group } from "../types";
+import { nestedConfig } from "../test/fixtures";
+import type { Category, ConfigSummary } from "../types";
 
 const cat = (name: string, target: number | null, parent: string | null = null): Category => ({
   name,
-  buy_symbol: name.slice(0, 3).toUpperCase(),
+  buy_symbol: null,
   parent,
   target,
-  color: "#111111",
+  color: null,
 });
-const grp = (name: string, target: number | null, parent: string | null = null): Group => ({
-  name,
-  parent,
-  target,
-});
-const cfg = (groups: Group[], categories: Category[]): ConfigSummary => ({
-  groups,
+const cfg = (categories: Category[]): ConfigSummary => ({
   categories,
   assignments: {},
   exclusions: [],
 });
 
-/** Names of a tree as nested arrays: leaf -> "name", group -> [name, ...children]. */
+/** Names of a tree as nested arrays: leaf -> "name", parent -> [name, ...children]. */
 function shape(nodes: TreeNode[]): unknown[] {
-  return nodes.map((n) => (n.kind === "group" ? [n.name, ...shape(n.children)] : n.name));
+  return nodes.map((n) => (n.children.length ? [n.name, ...shape(n.children)] : n.name));
 }
 
 /** Asserts two name->number records have the same keys and (float-tolerant) values. */
@@ -46,63 +40,71 @@ function expectClose(actual: Record<string, number>, expected: Record<string, nu
 }
 
 // Stocks 60 { US Stocks 70, International 30 }, Bonds 40
-const grouped = buildTree(groupedConfig);
-const groupedShares = defaultShares(grouped);
+const nested = buildTree(nestedConfig);
+const nestedShares = defaultShares(nested);
 
 // Equity 75 { Stocks 60 { US 70, Small 30 }, Intl 40 { Dev 50, EM 50 } }, Fixed 25 { Corp 100 }
-const threeLevel = cfg(
-  [grp("Equity", 75), grp("Stocks", 60, "Equity"), grp("Intl", 40, "Equity"), grp("Fixed", 25)],
-  [
-    cat("US", 70, "Stocks"),
-    cat("Small", 30, "Stocks"),
-    cat("Dev", 50, "Intl"),
-    cat("EM", 50, "Intl"),
-    cat("Corp", 100, "Fixed"),
-  ],
-);
+const threeLevel = cfg([
+  cat("Equity", 75),
+  cat("Stocks", 60, "Equity"),
+  cat("Intl", 40, "Equity"),
+  cat("Fixed", 25),
+  cat("US", 70, "Stocks"),
+  cat("Small", 30, "Stocks"),
+  cat("Dev", 50, "Intl"),
+  cat("EM", 50, "Intl"),
+  cat("Corp", 100, "Fixed"),
+]);
 
-const flat = buildTree(cfg([], [cat("A", null), cat("B", null)]));
+const flat = buildTree(cfg([cat("A", null), cat("B", null)]));
 
 describe("buildTree", () => {
-  it("nests categories under their group as typed nodes", () => {
-    expect(shape(grouped)).toEqual([["Stocks", "US Stocks", "International"], "Bonds"]);
-    expect(grouped[0]).toMatchObject({ kind: "group", name: "Stocks", target: 60 });
-    expect(grouped[1]).toEqual({
-      kind: "category",
+  it("nests categories under their parent", () => {
+    expect(shape(nested)).toEqual([["Stocks", "US Stocks", "International"], "Bonds"]);
+    expect(nested[0]).toMatchObject({ name: "Stocks", target: 60, buySymbol: null });
+    expect(nested[1]).toEqual({
       name: "Bonds",
       target: 40,
       color: "#1baf7a",
       buySymbol: "BND",
+      children: [],
     });
   });
 
-  it("puts groups before categories at every level, each in config order", () => {
+  it("keeps config order within each level", () => {
     const tree = buildTree(
-      cfg(
-        [grp("Z", null), grp("G2", null, "Z"), grp("A", null)],
-        [cat("M", null), cat("B", null, "Z")],
-      ),
+      cfg([
+        cat("Z", null),
+        cat("M", null),
+        cat("G", null, "Z"),
+        cat("A", null),
+        cat("B", null, "Z"),
+      ]),
     );
-    expect(shape(tree)).toEqual([["Z", ["G2"], "B"], ["A"], "M"]);
+    expect(shape(tree)).toEqual([["Z", "G", "B"], "M", "A"]);
   });
 
-  it("treats a parent that names no group as top level", () => {
-    const tree = buildTree(cfg([grp("G", null, "Ghost")], [cat("A", null, "Nope")]));
-    expect(shape(tree)).toEqual([["G"], "A"]);
+  it("treats a parent that names no category as top level", () => {
+    expect(shape(buildTree(cfg([cat("A", null, "Nope")])))).toEqual(["A"]);
   });
 
-  it("skips groups caught in a cycle instead of looping", () => {
-    const tree = buildTree(
-      cfg([grp("A", null, "B"), grp("B", null, "A"), grp("C", null)], [cat("X", null, "C")]),
-    );
-    expect(shape(tree)).toEqual([["C", "X"]]);
+  it("skips categories caught in a cycle instead of looping", () => {
+    const tree = buildTree(cfg([cat("A", null, "B"), cat("B", null, "A"), cat("C", null)]));
+    expect(shape(tree)).toEqual(["C"]);
+  });
+});
+
+describe("leafNames", () => {
+  it("lists categories nobody names as parent, in config order", () => {
+    expect(leafNames(nestedConfig)).toEqual(["US Stocks", "International", "Bonds"]);
+    expect(leafNames(cfg([cat("A", null), cat("B", null)]))).toEqual(["A", "B"]);
   });
 });
 
 describe("defaultShares", () => {
   it("reads every node's target, keeping unset ones as null", () => {
-    expect(groupedShares).toEqual({ Stocks: 60, "US Stocks": 70, International: 30, Bonds: 40 });
-    expect(defaultShares(buildTree(cfg([grp("G", null)], [cat("A", null, "G")])))).toEqual({
+    expect(nestedShares).toEqual({ Stocks: 60, "US Stocks": 70, International: 30, Bonds: 40 });
+    expect(defaultShares(buildTree(cfg([cat("G", null), cat("A", null, "G")])))).toEqual({
       G: null,
       A: null,
     });
@@ -111,7 +113,7 @@ describe("defaultShares", () => {
 
 describe("portfolioPercents", () => {
   it("multiplies shares down the tree", () => {
-    expectClose(portfolioPercents(grouped, groupedShares), {
+    expectClose(portfolioPercents(nested, nestedShares), {
       Stocks: 60,
       "US Stocks": 42,
       International: 18,
@@ -132,14 +134,14 @@ describe("portfolioPercents", () => {
   });
 
   it("treats null, NaN and missing shares as 0 without redistributing", () => {
-    expectClose(portfolioPercents(grouped, { ...groupedShares, "US Stocks": null }), {
+    expectClose(portfolioPercents(nested, { ...nestedShares, "US Stocks": null }), {
       Stocks: 60,
       "US Stocks": 0,
       International: 18,
       Bonds: 40,
     });
-    // A group at 0 zeroes its whole subtree.
-    expectClose(portfolioPercents(grouped, { Stocks: NaN, Bonds: 40 }), {
+    // A parent at 0 zeroes its whole subtree.
+    expectClose(portfolioPercents(nested, { Stocks: NaN, Bonds: 40 }), {
       Stocks: 0,
       "US Stocks": 0,
       International: 0,
@@ -148,55 +150,47 @@ describe("portfolioPercents", () => {
   });
 });
 
-describe("categoryTargets", () => {
-  it("returns whole-portfolio percents for categories only", () => {
-    expectClose(categoryTargets(grouped, groupedShares), {
+describe("leafTargets", () => {
+  it("returns whole-portfolio percents for leaves only", () => {
+    expectClose(leafTargets(nested, nestedShares), {
       "US Stocks": 42,
       International: 18,
       Bonds: 40,
     });
     const tree = buildTree(threeLevel);
-    const total = Object.values(categoryTargets(tree, defaultShares(tree))).reduce(
-      (a, b) => a + b,
-      0,
-    );
+    const total = Object.values(leafTargets(tree, defaultShares(tree))).reduce((a, b) => a + b, 0);
     expect(total).toBeCloseTo(100, 9);
   });
 
   it("does not round (float noise is left to the backend tolerance)", () => {
-    const targets = categoryTargets(grouped, { ...groupedShares, Stocks: 33.3, Bonds: 66.7 });
+    const targets = leafTargets(nested, { ...nestedShares, Stocks: 33.3, Bonds: 66.7 });
     expect(targets["International"]).toBeCloseTo(9.99, 9);
   });
 });
 
 describe("levelTotal", () => {
   it("sums only the given level, counting null, NaN and missing as 0", () => {
-    expect(levelTotal(grouped, { ...groupedShares, "US Stocks": 5 })).toBe(100);
+    expect(levelTotal(nested, { ...nestedShares, "US Stocks": 5 })).toBe(100);
     expect(levelTotal(flat, { A: null, B: 40 })).toBe(40);
     expect(levelTotal(flat, { A: NaN })).toBe(0);
   });
 });
 
 describe("siblingErrors", () => {
-  const withTop = (shares: Shares) => siblingErrors(grouped, { ...groupedShares, ...shares });
+  const withTop = (shares: Shares) => siblingErrors(nested, { ...nestedShares, ...shares });
 
   it("is empty when every level totals 100, and for an empty tree", () => {
-    expect(siblingErrors(grouped, groupedShares)).toEqual({});
+    expect(siblingErrors(nested, nestedShares)).toEqual({});
     const tree = buildTree(threeLevel);
     expect(siblingErrors(tree, defaultShares(tree))).toEqual({});
     expect(siblingErrors([], {})).toEqual({});
   });
 
-  it("keys errors by parent group, or '' for the top level, reporting several at once", () => {
+  it("keys errors by parent category, or '' for the top level, reporting several at once", () => {
     expect(withTop({ Stocks: 50, "US Stocks": null })).toEqual({
       "": "Top level: must add up to 100% (currently 90.0%).",
       Stocks: "Stocks: must add up to 100% (currently 30.0%).",
     });
-  });
-
-  it("has no level for an empty group", () => {
-    const tree = buildTree(cfg([grp("E", 10)], [cat("A", 90)]));
-    expect(siblingErrors(tree, defaultShares(tree))).toEqual({});
   });
 
   it.each([49.99, 50.01, 49.995])("accepts a total within 0.01 of 100 (50 + %d)", (bonds) => {
@@ -235,21 +229,21 @@ describe("withPairFill", () => {
   });
 
   it("does not fill a level with more or fewer than two nodes, or an unknown name", () => {
-    const three = buildTree(cfg([], [cat("A", null), cat("B", null), cat("C", null)]));
+    const three = buildTree(cfg([cat("A", null), cat("B", null), cat("C", null)]));
     expect(withPairFill(three, { B: 1, C: 2 }, "A", 30)).toEqual({ A: 30, B: 1, C: 2 });
-    expect(withPairFill(buildTree(cfg([], [cat("A", null)])), {}, "A", 30)).toEqual({ A: 30 });
+    expect(withPairFill(buildTree(cfg([cat("A", null)])), {}, "A", 30)).toEqual({ A: 30 });
     expect(withPairFill(flat, { A: 1 }, "Zed", 5)).toEqual({ A: 1, Zed: 5 });
   });
 
-  it("fills a group/category pair at the top level and pairs inside a group", () => {
+  it("pairs at the top level and inside a parent", () => {
     // The stocks/bonds case: Stocks 30 -> Bonds 70.
-    expect(withPairFill(grouped, groupedShares, "Stocks", 30)).toMatchObject({ Bonds: 70 });
-    expect(withPairFill(grouped, groupedShares, "International", 25)).toEqual({
-      ...groupedShares,
+    expect(withPairFill(nested, nestedShares, "Stocks", 30)).toMatchObject({ Bonds: 70 });
+    expect(withPairFill(nested, nestedShares, "International", 25)).toEqual({
+      ...nestedShares,
       "US Stocks": 75,
       International: 25,
     });
-    const tree = buildTree(threeLevel); // a pair two levels down, past a group without it
+    const tree = buildTree(threeLevel); // a pair two levels down
     expect(withPairFill(tree, defaultShares(tree), "Dev", 20)).toMatchObject({ Dev: 20, EM: 80 });
   });
 
@@ -260,38 +254,15 @@ describe("withPairFill", () => {
   });
 });
 
-describe("prunedTree", () => {
-  it("drops groups with no category below, recursively", () => {
-    const tree = buildTree(
-      cfg(
-        [
-          grp("Empty", null),
-          grp("Outer", null),
-          grp("InnerEmpty", null, "Outer"),
-          grp("Full", null),
-          grp("Sub", null, "Full"),
-          grp("Deep", null, "Sub"),
-        ],
-        [cat("X", null, "Full"), cat("Z", null, "Deep"), cat("Y", null)],
-      ),
-    );
-    expect(shape(prunedTree(tree))).toEqual([["Full", ["Sub", ["Deep", "Z"]], "X"], "Y"]);
-  });
-});
-
-describe("descendantGroups", () => {
-  it("lists every group below, transitively, in config order, excluding itself", () => {
-    const c = cfg(
-      [grp("C", null, "B"), grp("A", null), grp("B", null, "A"), grp("D", null, "A")],
-      [],
-    );
-    expect(descendantGroups(c, "A")).toEqual(["C", "B", "D"]);
-    expect(descendantGroups(c, "D")).toEqual([]);
-    expect(descendantGroups(c, "Nope")).toEqual([]);
+describe("descendants", () => {
+  it("lists every category below, transitively, in config order, excluding itself", () => {
+    const c = cfg([cat("C", null, "B"), cat("A", null), cat("B", null, "A"), cat("D", null, "A")]);
+    expect(descendants(c, "A")).toEqual(["C", "B", "D"]);
+    expect(descendants(c, "D")).toEqual([]);
+    expect(descendants(c, "Nope")).toEqual([]);
   });
 
   it("terminates on a cycle", () => {
-    const c = cfg([grp("A", null, "B"), grp("B", null, "A")], []);
-    expect(descendantGroups(c, "A")).toEqual(["B"]);
+    expect(descendants(cfg([cat("A", null, "B"), cat("B", null, "A")]), "A")).toEqual(["B"]);
   });
 });

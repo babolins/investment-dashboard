@@ -9,6 +9,7 @@
     FALLBACK_COLOR,
     toWeights,
   } from "../lib/categories";
+  import { leafNames } from "../lib/hierarchy";
   import type { ConfigSummary } from "../types";
 
   interface Props {
@@ -35,6 +36,8 @@
 
   const current = $derived(assignmentOf(config, symbol));
   const label = $derived(assignmentLabel(current));
+  // Securities are assigned to leaves only; names are unique, so a flat list is unambiguous.
+  const leaves = $derived(leafNames(config));
   const colors = $derived(colorsByCategory(config));
   const dots = $derived(
     current.kind === "assigned"
@@ -57,10 +60,7 @@
 
   function begin() {
     excluded = current.kind === "excluded";
-    selected =
-      current.kind === "assigned"
-        ? config.categories.map((c) => c.name).filter((name) => name in current.weights)
-        : [];
+    selected = current.kind === "assigned" ? leaves.filter((name) => name in current.weights) : [];
     percents =
       current.kind === "assigned"
         ? Object.fromEntries(
@@ -78,9 +78,7 @@
   }
 
   function toggleCategory(name: string, on: boolean) {
-    selected = config.categories
-      .map((c) => c.name)
-      .filter((n) => (n === name ? on : selected.includes(n)));
+    selected = leaves.filter((n) => (n === name ? on : selected.includes(n)));
     if (on) excluded = false;
     percents = evenSplit(selected);
   }
@@ -144,27 +142,28 @@
   <form id={panelId} class="panel" bind:this={panel} onsubmit={save}>
     <fieldset disabled={saving}>
       <legend>Category for {symbol}</legend>
-      {#each config.categories as c (c.name)}
+      {#each leaves as name (name)}
         <div class="option">
           <label>
             <input
               type="checkbox"
-              checked={selected.includes(c.name)}
-              onchange={(e) => toggleCategory(c.name, e.currentTarget.checked)}
+              checked={selected.includes(name)}
+              onchange={(e) => toggleCategory(name, e.currentTarget.checked)}
             />
-            <span class="dot" style:background={c.color} aria-hidden="true"></span>
-            {c.name}
+            <span class="dot" style:background={colors[name] ?? FALLBACK_COLOR} aria-hidden="true"
+            ></span>
+            {name}
           </label>
-          {#if split && selected.includes(c.name)}
+          {#if split && selected.includes(name)}
             <input
               type="number"
               class="percent"
               min="0"
               max="100"
               step="0.01"
-              aria-label="{c.name} percent"
+              aria-label="{name} percent"
               aria-describedby={feedbackId}
-              bind:value={percents[c.name]}
+              bind:value={percents[name]}
             />
             <span aria-hidden="true">%</span>
           {/if}

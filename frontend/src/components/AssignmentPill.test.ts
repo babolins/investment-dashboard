@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AssignmentPill from "./AssignmentPill.svelte";
 import { setAssignment } from "../services/api";
-import { config } from "../test/fixtures";
+import { config, nestedConfig } from "../test/fixtures";
 import type { ConfigSummary } from "../types";
 
 vi.mock("../services/api", () => ({ setAssignment: vi.fn() }));
@@ -279,5 +279,17 @@ describe("AssignmentPill cancelling", () => {
     await user.click(pill);
     expect(checkbox("Bonds")).toBeChecked();
     expect(checkbox("US Stocks")).not.toBeChecked();
+  });
+});
+
+describe("AssignmentPill categories offered", () => {
+  it("offers only leaf categories, not parents", async () => {
+    const user = userEvent.setup();
+    render(AssignmentPill, { props: { symbol: "VTI", config: nestedConfig, onChange: vi.fn() } });
+    await user.click(screen.getByRole("button"));
+
+    expect(screen.queryByRole("checkbox", { name: "Stocks" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "US Stocks" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Bonds" })).toBeInTheDocument();
   });
 });

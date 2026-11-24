@@ -1,5 +1,6 @@
 /** Category colours, symbol assignments and the helpers the assignment editor uses. */
 import type { ConfigSummary } from "../types";
+import { leafNames } from "./hierarchy";
 
 export const FALLBACK_COLOR = "#999";
 
@@ -8,8 +9,13 @@ export type Assignment =
   | { kind: "excluded" }
   | { kind: "assigned"; weights: Record<string, number> };
 
+/** Colour of each leaf category that has one (parents have none). */
 export function colorsByCategory(config: ConfigSummary | null): Record<string, string> {
-  return Object.fromEntries((config?.categories ?? []).map((c) => [c.name, c.color]));
+  if (!config) return {};
+  const leaves = new Set(leafNames(config));
+  return Object.fromEntries(
+    config.categories.flatMap((c) => (leaves.has(c.name) && c.color ? [[c.name, c.color]] : [])),
+  );
 }
 
 /** Maps each category to the (sorted) symbols assigned to it; split symbols appear under every category they split into. */
