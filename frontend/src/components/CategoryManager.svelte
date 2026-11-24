@@ -157,15 +157,15 @@
 <div class="card">
   <h2>Categories</h2>
   <p class="hint">
-    Group your holdings into categories, then assign each holding in the table below. Targets are a
-    share of the parent category, or of the portfolio at the top level. Securities are assigned to
-    categories with no sub-categories. Drag a row onto a category to move it, or use its "Move to"
-    menu.
+    Nest categories to plan targets as a share of their parent. Holdings go into categories without
+    sub-categories. Drag rows to rearrange, or use "Move to".
   </p>
 
+  <!-- The column header doubles as the top-level drop zone. It is always in the DOM: inserting
+       nodes during dragstart cancels the drag, so only its classes change while dragging. -->
   <div
     class={[
-      "top-zone",
+      "tree-head",
       { "drop-ok": dragged !== null && canDropOn(""), "drop-over": overTarget === "" },
     ]}
     role="group"
@@ -174,7 +174,10 @@
     ondragleave={(e) => manager.dragLeave(e, "")}
     ondrop={(e) => manager.drop(e, "")}
   >
-    Drop here to move to the top level
+    <span class="columns" aria-hidden="true">
+      <span>Category</span><span>Symbol</span><span class="num">Target</span><span>Move to</span>
+    </span>
+    <span class="drop-label">Drop here to move to the top level</span>
   </div>
 
   {#if tree.length > 0}
@@ -186,38 +189,90 @@
     <LevelHint label="Top level" nodes={tree} />
   {/if}
   {#if config.categories.some((c) => c.parent)}
-    <p class="hint">Deleting a category: its children move up a level.</p>
+    <p class="note">When you delete a category, its children move up a level.</p>
   {/if}
-  <p role="status" class="hint">{status}</p>
+  <p role="status" class="note">{status}</p>
 
   <AddCategoryForm {config} parents={containers} {onChange} />
   {#if atLeafCap}
-    <p class="hint">
-      Maximum of {MAX_LEAVES} leaf categories (categories with no sub-categories).
-    </p>
+    <p class="note">Maximum of {MAX_LEAVES} leaf categories (categories with no sub-categories).</p>
   {/if}
 </div>
 
 <style>
   .tree {
     list-style: none;
-    margin: 0 0 0.5rem;
+    margin: 0;
     padding: 0;
   }
-  .top-zone {
-    margin: 0.5rem 0;
-    padding: 0.3rem 0.6rem;
+  .tree-head {
+    position: relative;
+    height: 2rem;
     border: 1px dashed transparent;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    color: transparent; /* kept in the DOM always: inserting nodes during dragstart cancels the drag */
+    border-radius: var(--radius-sm);
+    color: var(--text-3);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
-  .top-zone.drop-ok {
-    border-color: #7a9bd1;
-    color: #555;
+  /* Same grid as the rows (CategoryTreeRow), so the columns line up. */
+  .columns {
+    display: grid;
+    grid-template-columns: var(--tree-columns);
+    column-gap: var(--tree-gap);
+    align-items: center;
+    height: 100%;
+    padding: 0 0.5rem;
+    border-bottom: 1px solid var(--border);
   }
-  .top-zone.drop-over {
+  .num {
+    text-align: right;
+  }
+  .drop-label {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.82rem;
+  }
+  .tree-head.drop-ok {
+    border-color: var(--focus);
+    color: var(--focus);
+  }
+  .tree-head.drop-ok .columns {
+    visibility: hidden;
+  }
+  .tree-head.drop-ok .drop-label {
+    display: flex;
+  }
+  .tree-head.drop-over {
     border-style: solid;
-    background: #eef3fb;
+    background: #eef4fc;
+  }
+  .note {
+    font-size: 0.8rem;
+    color: var(--text-3);
+    margin-top: 0.35rem;
+  }
+  .note:empty {
+    display: none;
+  }
+  .card {
+    --tree-columns: minmax(0, 1fr) 4.5rem 3.5rem 9rem 7.5rem;
+    --tree-gap: 0.75rem;
+  }
+  /* Narrow: name + target on one line; Move to and actions wrap below (see CategoryTreeRow). */
+  @media (max-width: 640px) {
+    .card {
+      --tree-columns: minmax(0, 1fr) auto;
+    }
+    .columns > :nth-child(2),
+    .columns > :nth-child(4) {
+      display: none;
+    }
   }
 </style>

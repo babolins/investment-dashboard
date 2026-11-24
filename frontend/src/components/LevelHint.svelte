@@ -21,3 +21,10 @@
     rebalance form
   {/if}
 </p>
+
+<style>
+  .sum-indicator {
+    margin: 0.2rem 0 0.5rem;
+    padding-left: 0.5rem;
+  }
+</style>

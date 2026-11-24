@@ -192,7 +192,7 @@
       <button type="submit" class="btn-primary" disabled={saving || !percentsValid}>
         {saving ? "Saving…" : "Save"}
       </button>
-      <button type="button" class="cancel" disabled={saving} onclick={close}>Cancel</button>
+      <button type="button" class="btn-secondary" disabled={saving} onclick={close}>Cancel</button>
     </div>
   </form>
 {/if}
@@ -205,8 +205,8 @@
     padding: 0.2rem 0.6rem;
     border: 1px solid transparent;
     border-radius: 999px;
-    background: #eef1f6;
-    color: #1a1a2e;
+    background: #eef0f3;
+    color: var(--text);
     font: inherit;
     font-size: 0.8rem;
     font-weight: 600;
@@ -221,9 +221,8 @@
     background: #fff;
     border: 1px dashed #b45309;
   }
-  .pill:focus-visible,
-  .cancel:focus-visible {
-    outline: 2px solid #1b3a6b;
+  .pill:focus-visible {
+    outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
   .dot {
@@ -231,17 +230,17 @@
     width: 0.65rem;
     height: 0.65rem;
     border-radius: 50%;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
     flex: none;
   }
   /* Inline (not a popover): .table-wrapper clips absolutely positioned content. */
   .panel {
     margin-top: 0.5rem;
     min-width: 15rem;
-    padding: 0.6rem 0.75rem;
-    border: 1px solid #d8dde6;
-    border-radius: 8px;
-    background: #fff;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 4px 12px rgba(16, 24, 40, 0.06);
     white-space: normal;
     font-weight: normal;
   }
@@ -249,6 +248,7 @@
     border: 0;
     padding: 0;
     margin: 0;
+    background: none;
   }
   .panel legend {
     font-size: 0.85rem;
@@ -273,30 +273,12 @@
   }
   .percent {
     width: 5rem;
-    padding: 0.25rem 0.4rem;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+    height: 1.9rem;
     text-align: right;
   }
   .actions {
     display: flex;
     gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-  .actions :global(.btn-primary) {
-    padding: 0.35rem 0.9rem;
-  }
-  .cancel {
-    padding: 0.35rem 0.9rem;
-    border: 1px solid #ccc;
-    border-radius: 7px;
-    background: #fff;
-    font: inherit;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
-  .cancel:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+    margin-top: 0.6rem;
   }
 </style>

@@ -32,6 +32,7 @@
       { "drop-ok": showDrop, "drop-over": showDrop && manager.overTarget === node.name },
     ]}
     class:dragging={manager.dragged === node.name}
+    class:editing
     role="group"
     aria-label={node.name}
     draggable={!editing && !manager.busy}
@@ -41,21 +42,25 @@
     ondragleave={(e) => manager.dragLeave(e, node.name)}
     ondrop={(e) => manager.drop(e, node.name)}
   >
-    {#if isParent}
-      <span class="parent-marker" aria-hidden="true">▸</span>
-    {:else}
-      <span class="dot" style:background={node.color ?? FALLBACK_COLOR} aria-hidden="true"></span>
-    {/if}
-    <strong class="name">{node.name}</strong>
+    <span class="name-cell">
+      {#if isParent}
+        <span class="parent-marker" aria-hidden="true">▾</span>
+      {:else}
+        <span class="dot" style:background={node.color ?? FALLBACK_COLOR} aria-hidden="true"></span>
+      {/if}
+      <strong class="name">{node.name}</strong>
+      {#if isParent && !editing}
+        <span class="sub">
+          {node.children.length}
+          {node.children.length === 1 ? "sub-category" : "sub-categories"}
+        </span>
+      {/if}
+    </span>
     {#if !editing}
-      <span class="meta">
-        {#if isParent}
-          {node.children.length} {node.children.length === 1 ? "sub-category" : "sub-categories"}
-        {:else}
-          {node.buySymbol ?? ""}
-        {/if}
+      <span class="symbol">
+        {#if !isParent && node.buySymbol}<span class="symbol-pill">{node.buySymbol}</span>{/if}
       </span>
-      <span class="meta">{node.target === null ? "—" : `${node.target}%`}</span>
+      <span class="target">{node.target === null ? "—" : `${node.target}%`}</span>
       <select
         aria-label="Move {node.name} to"
         data-move={node.name}
@@ -68,24 +73,26 @@
           <option value={t}>{t}</option>
         {/each}
       </select>
-      <button
-        type="button"
-        class="secondary"
-        disabled={manager.busy}
-        onclick={() => manager.startEdit(node.name)}
-        aria-label="Edit {node.name}"
-      >
-        Edit
-      </button>
-      <button
-        type="button"
-        class="secondary"
-        disabled={manager.busy}
-        onclick={() => manager.remove(node.name)}
-        aria-label="Delete {node.name}"
-      >
-        Delete
-      </button>
+      <span class="actions">
+        <button
+          type="button"
+          class="btn-ghost"
+          disabled={manager.busy}
+          onclick={() => manager.startEdit(node.name)}
+          aria-label="Edit {node.name}"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          class="btn-ghost danger"
+          disabled={manager.busy}
+          onclick={() => manager.remove(node.name)}
+          aria-label="Delete {node.name}"
+        >
+          Delete
+        </button>
+      </span>
     {/if}
   </div>
   <!-- The form stays outside the draggable row: Firefox can't select text in inputs inside one. -->
@@ -107,74 +114,123 @@
 
 <style>
   li {
-    padding: 0.4rem 0;
-    border-bottom: 1px solid #eef0f4;
+    border-bottom: 1px solid #f0f1f4;
   }
+  li:last-child {
+    border-bottom: 0;
+  }
+  /* Nested levels: indented, with a thin guide line. */
   .tree {
     list-style: none;
-    margin: 0.4rem 0 0;
-    padding: 0 0 0 1.5rem;
+    margin: 0 0 0.35rem 0.85rem;
+    padding: 0 0 0 0.9rem;
+    border-left: 1px solid var(--border);
   }
   .row {
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--tree-columns);
+    column-gap: var(--tree-gap);
     align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    border-radius: 6px;
+    min-height: 2.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: grab;
+  }
+  .row:hover {
+    background: var(--surface-muted);
+  }
+  .row.editing {
+    cursor: default;
   }
   .row.dragging {
-    opacity: 0.5;
+    opacity: 0.45;
   }
   .row.drop-ok {
-    outline: 2px dashed #7a9bd1;
-    outline-offset: 2px;
+    outline: 1px dashed var(--focus);
+    outline-offset: -1px;
   }
   .row.drop-over {
     outline-style: solid;
-    background: #eef3fb;
+    background: #eef4fc;
+  }
+  .name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
   }
   .name {
-    min-width: 8rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .meta {
-    min-width: 3.5rem;
-    color: #555;
-    font-size: 0.9rem;
+  .sub {
+    color: var(--text-3);
+    font-size: 0.78rem;
+    white-space: nowrap;
   }
   .parent-marker {
-    width: 0.8rem;
-    color: #555;
+    width: 0.65rem;
+    color: var(--text-3);
+    font-size: 0.75rem;
+    text-align: center;
     flex: none;
   }
   .dot {
-    width: 0.8rem;
-    height: 0.8rem;
+    width: 0.65rem;
+    height: 0.65rem;
     border-radius: 50%;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
     flex: none;
   }
-  select {
-    padding: 0.25rem 0.4rem;
-    border: 1px solid #ccc;
+  .symbol-pill {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
     border-radius: 6px;
-    font-size: 0.85rem;
+    background: #eef0f3;
+    color: var(--text-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
   }
-  .secondary {
-    padding: 0.3rem 0.7rem;
-    border: 1px solid #ccc;
-    border-radius: 7px;
-    background: #fff;
-    color: #1a1a2e;
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
+  .target {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-2);
+    font-size: 0.88rem;
   }
-  .secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  select {
+    height: 2rem;
+    width: 100%;
+    padding: 0 0.45rem;
+    border-color: transparent;
+    background-color: #f1f2f5;
+    font-size: 0.82rem;
+    color: var(--text-2);
   }
-  .secondary:focus-visible {
-    outline: 2px solid #1b3a6b;
-    outline-offset: 2px;
+  select:hover:not(:disabled) {
+    border-color: var(--border-strong);
+  }
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.15rem;
+  }
+  .danger:hover:not(:disabled) {
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+  @media (max-width: 640px) {
+    .row {
+      row-gap: 0.3rem;
+      padding: 0.45rem 0.5rem;
+    }
+    .symbol {
+      display: none;
+    }
+    select {
+      grid-column: 1;
+      max-width: 12rem;
+    }
   }
 </style>

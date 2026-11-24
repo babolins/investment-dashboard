@@ -57,19 +57,14 @@
 </script>
 
 <form class="add" novalidate onsubmit={add} aria-label="Add category">
+  <p class="title">Add a category</p>
   <div class="field">
     <label for="{uid}-name">Name</label>
-    <input id="{uid}-name" bind:value={name} disabled={adding} />
+    <input id="{uid}-name" placeholder="e.g. US Stocks" bind:value={name} disabled={adding} />
   </div>
   <div class="field">
     <label for="{uid}-symbol">Buy symbol</label>
-    <input
-      id="{uid}-symbol"
-      class="short"
-      placeholder="Optional"
-      bind:value={symbol}
-      disabled={adding}
-    />
+    <input id="{uid}-symbol" placeholder="Optional" bind:value={symbol} disabled={adding} />
   </div>
   <div class="field">
     <label for="{uid}-parent">Inside</label>
@@ -84,7 +79,6 @@
     <label for="{uid}-target">Default % of parent</label>
     <input
       id="{uid}-target"
-      class="short"
       type="number"
       min="0"
       max="100"
@@ -101,34 +95,45 @@
 
 <style>
   .add {
-    display: flex;
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns:
+      minmax(10rem, 2fr) minmax(6rem, 1fr) minmax(8rem, 1.2fr) minmax(7rem, 1fr)
+      auto;
     gap: 0.75rem;
-    flex-wrap: wrap;
-    margin-top: 0.75rem;
+    align-items: end;
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-muted);
+  }
+  .title {
+    grid-column: 1 / -1;
+    font-size: 0.85rem;
+    font-weight: 650;
   }
   .field {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
+    min-width: 0;
   }
   .field label {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-2);
   }
   input,
   select {
-    padding: 0.4rem 0.6rem;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 0.9rem;
-  }
-  input.short {
-    width: 6.5rem;
+    width: 100%;
   }
   .error-msg {
-    flex-basis: 100%;
+    grid-column: 1 / -1;
     margin: 0;
+  }
+  @media (max-width: 720px) {
+    .add {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
   }
 </style>

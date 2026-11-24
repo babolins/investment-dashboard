@@ -42,60 +42,84 @@
 
 <!-- novalidate: the validators give one consistent inline message instead of native bubbles. -->
 <form class="edit" novalidate onsubmit={submit}>
-  <input aria-label="Name for {original.name}" bind:value={name} disabled={manager.busy} />
-  <input
-    aria-label="Buy symbol for {original.name}"
-    aria-describedby="{uid}-symbol-hint"
-    class="short"
-    bind:value={symbol}
-    disabled={manager.busy}
-  />
-  <span id="{uid}-symbol-hint" class="hint">Used when this category holds securities.</span>
-  <input
-    aria-label="Default target for {original.name}"
-    class="short"
-    type="number"
-    min="0"
-    max="100"
-    step="any"
-    bind:value={target}
-    disabled={manager.busy}
-  />
-  <button type="submit" class="btn-primary" disabled={manager.busy}>Save</button>
-  <button type="button" class="secondary" disabled={manager.busy} onclick={manager.cancelEdit}>
-    Cancel
-  </button>
+  <span class="field wide">
+    <span class="caption" aria-hidden="true">Name</span>
+    <input aria-label="Name for {original.name}" bind:value={name} disabled={manager.busy} />
+  </span>
+  <span class="field">
+    <span class="caption" aria-hidden="true">Buy symbol</span>
+    <input
+      aria-label="Buy symbol for {original.name}"
+      aria-describedby="{uid}-symbol-hint"
+      placeholder="Optional"
+      bind:value={symbol}
+      disabled={manager.busy}
+    />
+  </span>
+  <span class="field">
+    <span class="caption" aria-hidden="true">Default % of parent</span>
+    <input
+      aria-label="Default target for {original.name}"
+      type="number"
+      min="0"
+      max="100"
+      step="any"
+      bind:value={target}
+      disabled={manager.busy}
+    />
+  </span>
+  <span class="buttons">
+    <button type="submit" class="btn-primary" disabled={manager.busy}>Save</button>
+    <button
+      type="button"
+      class="btn-secondary"
+      disabled={manager.busy}
+      onclick={manager.cancelEdit}
+    >
+      Cancel
+    </button>
+  </span>
+  <span id="{uid}-symbol-hint" class="symbol-hint">Used when this category holds securities.</span>
 </form>
 
 <style>
   .edit {
+    display: grid;
+    grid-template-columns: minmax(10rem, 2fr) minmax(6rem, 1fr) minmax(7rem, 1fr) auto;
+    gap: 0.4rem 0.75rem;
+    align-items: end;
+    margin: 0.25rem 0 0.6rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-muted);
+  }
+  .field {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    margin-top: 0.4rem;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+  }
+  .caption {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-2);
   }
   input {
-    padding: 0.4rem 0.6rem;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    width: 100%;
   }
-  input.short {
-    width: 6.5rem;
+  .buttons {
+    display: flex;
+    gap: 0.5rem;
   }
-  .secondary {
-    padding: 0.3rem 0.7rem;
-    border: 1px solid #ccc;
-    border-radius: 7px;
-    background: #fff;
-    color: #1a1a2e;
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
+  .symbol-hint {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+    color: var(--text-3);
   }
-  .secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  @media (max-width: 640px) {
+    .edit {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>

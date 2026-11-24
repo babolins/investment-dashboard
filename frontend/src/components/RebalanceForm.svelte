@@ -171,20 +171,30 @@
     gap: 0.5rem;
     margin: 0.5rem 0 0 1.25rem;
     padding-left: 0.75rem;
-    border-left: 2px solid #e0e0e0;
+    border-left: 1px solid var(--border);
   }
   .alloc-row-parent > label {
     font-weight: 700;
   }
   .alloc-symbol {
     font-size: 0.78rem;
-    color: #777;
+    color: var(--text-3);
   }
   .alloc-readout {
     min-width: 9.5rem;
     font-size: 0.78rem;
-    color: #666;
+    color: var(--text-3);
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 640px) {
+    :global(.alloc-row) {
+      flex-wrap: wrap;
+    }
+    .alloc-readout {
+      flex-basis: 100%;
+      min-width: 0;
+      text-align: left;
+    }
   }
 </style>
