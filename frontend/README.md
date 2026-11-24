@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Runs at `http://localhost:5173`. Requests to `/api` and `/health` are proxied to the backend at `http://localhost:8000` (configured in `vite.config.ts`). Start the backend first, or run `../run.sh` from here to start both together.
+Runs at `http://localhost:5173`. Requests to `/api` are proxied to the backend at `http://localhost:8000` (configured in `vite.config.ts`). Start the backend first, or run `../run.sh` from here to start both together.
 
 ## Checks
 

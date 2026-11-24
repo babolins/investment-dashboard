@@ -14,11 +14,6 @@ services:
     volumes:
       # Writable: category edits made in the UI are saved back to this file.
       - ./backend/config.yaml:/etc/investment-dashboard/config.yaml
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
 networks:
   default:

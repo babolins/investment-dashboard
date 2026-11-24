@@ -44,13 +44,7 @@ def names(summary: dict) -> list[str]:
     return [c["name"] for c in summary["categories"]]
 
 
-# --- health / config --------------------------------------------------------
-
-
-def test_health(client: TestClient):
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+# --- config -----------------------------------------------------------------
 
 
 def test_config_summary(client: TestClient):

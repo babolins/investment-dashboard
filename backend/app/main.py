@@ -84,11 +84,6 @@ app.include_router(rebalance.router, prefix="/api")
 app.include_router(config_router.router, prefix="/api")
 
 
-@app.get("/health", tags=["meta"])
-def health_check() -> dict:
-    return {"status": "ok"}
-
-
 # ---------------------------------------------------------------------------
 # Static frontend — only active when built assets are found, so one uvicorn
 # process serves both the API and the UI.  Looked up in order:
