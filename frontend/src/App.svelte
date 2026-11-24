@@ -101,11 +101,9 @@
       {#if allocation}
         <div class="top-row">
           <AllocationChart breakdown={allocation} {colors} symbolsByCategory={symbolsByCat} />
-          <RebalanceForm
-            {allocation}
-            categories={config?.categories ?? []}
-            onResult={(r) => (result = r)}
-          />
+          {#if config}
+            <RebalanceForm {allocation} {config} onResult={(r) => (result = r)} />
+          {/if}
         </div>
 
         {#if result}

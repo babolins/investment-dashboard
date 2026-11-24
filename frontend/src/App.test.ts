@@ -36,7 +36,7 @@ async function upload(container: HTMLElement, user: ReturnType<typeof userEvent.
 
 async function calculate(user: ReturnType<typeof userEvent.setup>) {
   // Targets prefill from the config, so wait for it before submitting.
-  await screen.findByLabelText("US Stocks (VTI)");
+  await screen.findByLabelText("US Stocks % of portfolio");
   await user.type(screen.getByLabelText(/investment amount/i), "1000");
   await user.click(screen.getByRole("button", { name: /calculate buy guidance/i }));
 }
@@ -210,7 +210,7 @@ describe("App", () => {
       await waitFor(() => expect(legendRows(container)).toHaveLength(2));
       expect(screen.queryByRole("heading", { name: "Buy Guidance" })).toBeNull();
       expect(container.querySelector(".unassigned-note")).toHaveTextContent("$1,000.00");
-      expect(screen.queryByLabelText("Bonds (BND)")).toBeNull();
+      expect(screen.queryByLabelText("Bonds % of portfolio")).toBeNull();
     });
 
     it("does not fetch an allocation when no portfolio is loaded", async () => {

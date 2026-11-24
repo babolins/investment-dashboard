@@ -1,31 +1,60 @@
 <script lang="ts">
-  import { targetTotal, validateTargets } from "../lib/targets";
+  import {
+    buildTree,
+    categoryTargets,
+    defaultShares,
+    portfolioPercents,
+    prunedTree,
+    siblingErrors,
+    withPairFill,
+    type TreeNode,
+  } from "../lib/hierarchy";
+  import { formatPct } from "../lib/format";
   import { fetchRebalance } from "../services/api";
-  import type { AllocationBreakdown, Category, RebalanceResult } from "../types";
+  import type { AllocationBreakdown, ConfigSummary, RebalanceResult } from "../types";
 
   interface Props {
     allocation: AllocationBreakdown;
-    categories: Category[];
+    config: ConfigSummary;
     onResult: (result: RebalanceResult) => void;
   }
 
-  let { allocation, categories, onResult }: Props = $props();
+  let { allocation, config, onResult }: Props = $props();
 
   let amount: number | null = $state(null);
   let loading = $state(false);
   let error: string | null = $state(null);
 
-  // Only the user's edits are state; each target is `edits[name]` if present, else the
-  // category's default. With no prefill effect there is nothing to clobber when categories
-  // change identity, and new categories simply appear with their defaults.
+  // State design: only the user's edits are state (node name -> "% of parent"); each share is
+  // `edits[name]` if present, else the node's configured default. With no prefill effect there is
+  // nothing to clobber when the config changes identity, and new nodes simply appear with their
+  // defaults. Edits are keyed by name, so a moved node keeps its edit (now read as % of its new
+  // parent). Pair fill writes only the sibling it actually changed, so untouched rows keep
+  // following their defaults.
   let edits = $state<Record<string, number | null>>({});
-  const targets = $derived(
-    Object.fromEntries(
-      categories.map((c) => [c.name, c.name in edits ? edits[c.name] : c.target]),
-    ) as Record<string, number | null>,
-  );
-  const targetError = $derived(validateTargets(targets));
-  const total = $derived(targetTotal(targets));
+  const tree = $derived(prunedTree(buildTree(config)));
+  const shares = $derived({ ...defaultShares(tree), ...edits });
+  const percents = $derived(portfolioPercents(tree, shares));
+  const errors = $derived(siblingErrors(tree, shares));
+
+  // Ids are built from positions, never names (names contain spaces; aria-describedby is a list).
+  const indexes = $derived.by(() => {
+    const map: Record<string, number> = {};
+    const visit = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        map[n.name] = Object.keys(map).length;
+        if (n.kind === "group") visit(n.children);
+      }
+    };
+    visit(tree);
+    return map;
+  });
+
+  function setShare(name: string, value: number | null) {
+    const next = withPairFill(tree, shares, name, value);
+    edits[name] = value;
+    for (const key in next) if (key !== name && next[key] !== shares[key]) edits[key] = next[key];
+  }
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
@@ -35,15 +64,16 @@
       error = "Enter a positive investment amount.";
       return;
     }
-    if (targetError) {
-      error = targetError;
+    const levelErrors = Object.values(errors);
+    if (levelErrors.length > 0) {
+      error = levelErrors[0];
       return;
     }
 
     loading = true;
     try {
-      // Empty inputs count as 0.
-      const target = Object.fromEntries(Object.entries(targets).map(([k, v]) => [k, v ?? 0]));
+      // Whole-portfolio % per category; empty inputs count as 0.
+      const target = categoryTargets(tree, shares);
       onResult(await fetchRebalance(allocation, { investment_amount: amount, target }));
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : "Unknown error";
@@ -53,9 +83,51 @@
   }
 </script>
 
+{#snippet level(nodes: TreeNode[], parent: string | null)}
+  {@const key = parent ?? ""}
+  {@const errId = `level-error-${parent === null ? "top" : indexes[parent]}`}
+  {#each nodes as n (n.name)}
+    {@const id = `target-${indexes[n.name]}`}
+    <div class="alloc-node">
+      <div class="alloc-row" class:alloc-row-group={n.kind === "group"}>
+        <label for={id}><strong>{n.name}</strong> % of <span>{parent ?? "portfolio"}</span></label>
+        <input
+          {id}
+          type="number"
+          min="0"
+          max="100"
+          step="0.1"
+          aria-invalid={errors[key] ? "true" : undefined}
+          aria-describedby={errors[key] ? errId : undefined}
+          bind:value={() => shares[n.name], (v) => setShare(n.name, v)}
+        />
+        <span>%</span>
+        {#if n.kind === "category"}
+          <span class="alloc-symbol">{n.buySymbol}</span>
+        {/if}
+        {#if parent !== null}
+          <span class="alloc-readout">= {formatPct(percents[n.name])} of portfolio</span>
+        {/if}
+      </div>
+      {#if n.kind === "group"}
+        <div class="alloc-children" role="group" aria-label={n.name}>
+          {@render level(n.children, n.name)}
+        </div>
+      {/if}
+    </div>
+  {/each}
+  {#if errors[key]}
+    <p class="sum-indicator err" id={errId}>{errors[key]}</p>
+  {/if}
+{/snippet}
+
 <div class="card rebalance-card">
   <h2>Rebalance Calculator</h2>
-  <p class="hint">Set a target percentage for each category; they must add up to 100%.</p>
+  {#if tree.length === 0}
+    <p class="hint">Add a category to set targets.</p>
+  {:else}
+    <p class="hint">Each level's percentages are of its parent and must add up to 100%.</p>
+  {/if}
 
   <!-- novalidate: show our inline messages instead of the browser's validation bubbles. -->
   <form onsubmit={handleSubmit} class="rebalance-form" novalidate>
@@ -72,36 +144,48 @@
       />
     </div>
 
-    <fieldset>
-      <legend>Targets (%)</legend>
-      <div class="alloc-inputs">
-        {#each categories as c, i (c.name)}
-          {@const id = `target-${i}`}
-          <div class="alloc-row">
-            <label for={id}>{c.name} ({c.buy_symbol})</label>
-            <input
-              {id}
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              bind:value={() => targets[c.name], (v) => (edits[c.name] = v)}
-            />
-            <span>%</span>
-          </div>
-        {/each}
-      </div>
-      <p class="sum-indicator" class:ok={!targetError} class:err={targetError}>
-        Total: {total.toFixed(1)}%
-      </p>
-    </fieldset>
+    {#if tree.length > 0}
+      <fieldset>
+        <legend>Targets (%)</legend>
+        <div class="alloc-inputs">
+          {@render level(tree, null)}
+        </div>
+      </fieldset>
+    {/if}
 
     {#if error}
       <p class="error-msg" role="alert">{error}</p>
     {/if}
 
-    <button type="submit" disabled={loading} class="btn-primary">
-      {loading ? "Calculating…" : "Calculate Buy Guidance"}
-    </button>
+    {#if tree.length > 0}
+      <button type="submit" disabled={loading} class="btn-primary">
+        {loading ? "Calculating…" : "Calculate Buy Guidance"}
+      </button>
+    {/if}
   </form>
 </div>
+
+<style>
+  .alloc-children {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0 1.25rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid #e0e0e0;
+  }
+  .alloc-row-group > label {
+    font-weight: 700;
+  }
+  .alloc-symbol {
+    font-size: 0.78rem;
+    color: #777;
+  }
+  .alloc-readout {
+    min-width: 9.5rem;
+    font-size: 0.78rem;
+    color: #666;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

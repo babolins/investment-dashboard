@@ -1,9 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/svelte";
+import { render, screen, waitFor, within } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchRebalance } from "../services/api";
-import { allocation, config, rebalance } from "../test/fixtures";
-import type { Category, RebalanceResult } from "../types";
+import { allocation, config, groupedConfig, rebalance } from "../test/fixtures";
+import type { Category, ConfigSummary, RebalanceResult } from "../types";
 import RebalanceForm from "./RebalanceForm.svelte";
 
 vi.mock("../services/api", () => ({ fetchRebalance: vi.fn() }));
@@ -11,21 +11,38 @@ const mockFetch = vi.mocked(fetchRebalance);
 
 const BUTTON = "Calculate Buy Guidance";
 const AMOUNT_MESSAGE = "Enter a positive investment amount.";
-const RANGE_MESSAGE = "Each target must be between 0% and 100%.";
+const RANGE_MESSAGE = "Top level: each share must be between 0% and 100%.";
 
-const US = "US Stocks (VTI)";
-const INTL = "International (VXUS)";
-const BONDS = "Bonds (BND)";
+const US = "US Stocks % of portfolio";
+const INTL = "International % of portfolio";
+const BONDS = "Bonds % of portfolio";
 
-function renderForm(categories: Category[] = config.categories) {
+// Grouped labels: Stocks and Bonds at the top level, the two stock funds inside Stocks.
+const STOCKS = "Stocks % of portfolio";
+const US_IN = "US Stocks % of Stocks";
+const INTL_IN = "International % of Stocks";
+const BONDS_TOP = "Bonds % of portfolio";
+
+// groupedConfig with the Stocks and Bonds defaults removed, so typing is always a change.
+const blankGrouped: ConfigSummary = {
+  ...groupedConfig,
+  groups: [{ name: "Stocks", parent: null, target: null }],
+  categories: groupedConfig.categories.map((c) =>
+    c.name === "Bonds" ? { ...c, target: null } : c,
+  ),
+};
+
+const twoFlat: ConfigSummary = { ...config, categories: config.categories.slice(0, 2) };
+
+function renderForm(cfg: ConfigSummary = config) {
   const onResult = vi.fn();
-  const view = render(RebalanceForm, { props: { allocation, categories, onResult } });
+  const view = render(RebalanceForm, { props: { allocation, config: cfg, onResult } });
   return {
     ...view,
     onResult,
     user: userEvent.setup(),
     amount: screen.getByLabelText("Investment Amount ($)"),
-    indicator: () => view.container.querySelector(".sum-indicator"),
+    levelErrors: () => view.container.querySelectorAll(".sum-indicator.err"),
   };
 }
 
@@ -38,51 +55,188 @@ async function fill(user: Form["user"], input: HTMLElement, value: string) {
 
 const submit = (user: Form["user"]) => user.click(screen.getByRole("button", { name: BUTTON }));
 const input = (label: string) => screen.getByLabelText(label);
+const readout = (percent: string) => screen.queryByText(`= ${percent} of portfolio`);
 
 beforeEach(() => vi.resetAllMocks());
 
 describe("RebalanceForm", () => {
-  it("renders the heading, amount input and one labelled input per category", () => {
-    const { amount } = renderForm();
-    expect(screen.getByRole("heading", { name: "Rebalance Calculator" })).toBeInTheDocument();
-    expect(screen.getByText("Targets (%)")).toBeInTheDocument();
-    expect(amount).toHaveValue(null);
-    expect(screen.getByRole("button", { name: BUTTON })).toBeEnabled();
-    expect(screen.getAllByRole("spinbutton")).toHaveLength(4); // amount + 3 categories
-    for (const label of [US, INTL, BONDS]) expect(input(label)).toBeInTheDocument();
-  });
+  describe("flat config", () => {
+    it("renders the heading, amount input and one labelled input per category", () => {
+      const { amount } = renderForm();
+      expect(screen.getByRole("heading", { name: "Rebalance Calculator" })).toBeInTheDocument();
+      expect(screen.getByText("Targets (%)")).toBeInTheDocument();
+      expect(amount).toHaveValue(null);
+      expect(screen.getByRole("button", { name: BUTTON })).toBeEnabled();
+      expect(screen.getAllByRole("spinbutton")).toHaveLength(4); // amount + 3 categories
+      for (const label of [US, INTL, BONDS]) expect(input(label)).toBeInTheDocument();
+    });
 
-  describe("prefill", () => {
-    it("fills each input from the category target", () => {
-      const { indicator } = renderForm();
+    it("fills each input from the category target with no errors", () => {
+      const { levelErrors } = renderForm();
       expect(input(US)).toHaveValue(48);
       expect(input(INTL)).toHaveValue(32);
       expect(input(BONDS)).toHaveValue(20);
-      expect(indicator()).toHaveTextContent("Total: 100.0%");
-      expect(indicator()).toHaveClass("ok");
+      expect(levelErrors()).toHaveLength(0);
     });
 
-    it("leaves inputs empty for categories without a target", () => {
-      const { indicator } = renderForm(config.categories.map((c) => ({ ...c, target: null })));
+    it("shows no portfolio readouts for top-level nodes", () => {
+      renderForm();
+      expect(screen.queryByText(/of portfolio$/)).toBeNull();
+    });
+
+    it("leaves inputs empty and reports the total for categories without a target", () => {
+      const cfg = { ...config, categories: config.categories.map((c) => ({ ...c, target: null })) };
+      renderForm(cfg);
       expect(input(US)).toHaveValue(null);
       expect(input(BONDS)).toHaveValue(null);
-      expect(indicator()).toHaveTextContent("Total: 0.0%");
-      expect(indicator()).toHaveClass("err");
+      expect(screen.getByText("Top level: must add up to 100% (currently 0.0%).")).toBeVisible();
     });
 
     it("shows inputs when the categories arrive after mount", async () => {
-      const { rerender, indicator } = renderForm([]);
+      const { rerender, levelErrors } = renderForm({ ...config, categories: [] });
       expect(screen.queryByLabelText(US)).toBeNull();
-      await rerender({ categories: config.categories });
+      await rerender({ config });
       expect(input(US)).toHaveValue(48);
       expect(input(BONDS)).toHaveValue(20);
-      expect(indicator()).toHaveClass("ok");
+      expect(levelErrors()).toHaveLength(0);
+    });
+  });
+
+  describe("pair fill", () => {
+    it("fills the other of two top-level nodes", async () => {
+      const { user } = renderForm(twoFlat);
+      await fill(user, input(US), "60");
+      expect(input(INTL)).toHaveValue(40);
+      await fill(user, input(INTL), "25");
+      expect(input(US)).toHaveValue(75);
     });
 
-    it("keeps edits across a re-render with a new categories array", async () => {
+    it("leaves the sibling alone for an out-of-range or cleared value", async () => {
+      const { user } = renderForm(twoFlat);
+      // "-5" is out of range from its first keystroke ("150" would pass through "1" and "15").
+      await fill(user, input(US), "-5");
+      expect(input(INTL)).toHaveValue(32);
+      await fill(user, input(US), "");
+      expect(input(INTL)).toHaveValue(32);
+    });
+
+    it("does not fill when a level has three nodes", async () => {
+      const { user } = renderForm();
+      await fill(user, input(US), "10");
+      expect(input(INTL)).toHaveValue(32);
+      expect(input(BONDS)).toHaveValue(20);
+    });
+  });
+
+  describe("grouped config", () => {
+    it("nests children under their group with '% of <group>' labels", () => {
+      renderForm(groupedConfig);
+      const stocks = screen.getByRole("group", { name: "Stocks" });
+      expect(within(stocks).getByLabelText(US_IN)).toHaveValue(70);
+      expect(within(stocks).getByLabelText(INTL_IN)).toHaveValue(30);
+      expect(within(stocks).queryByLabelText(BONDS_TOP)).toBeNull();
+      expect(input(STOCKS)).toHaveValue(60);
+      expect(input(BONDS_TOP)).toHaveValue(40);
+    });
+
+    it("shows whole-portfolio readouts on nested nodes only", () => {
+      renderForm(groupedConfig);
+      expect(readout("42.0%")).toBeInTheDocument();
+      expect(readout("18.0%")).toBeInTheDocument();
+      expect(readout("60.0%")).toBeNull(); // Stocks is top level
+      expect(readout("40.0%")).toBeNull(); // Bonds is top level
+    });
+
+    it("pair-fills Bonds when Stocks is typed and updates the readouts", async () => {
+      const { user } = renderForm(blankGrouped);
+      await fill(user, input(STOCKS), "60");
+      expect(input(BONDS_TOP)).toHaveValue(40);
+      expect(readout("42.0%")).toBeInTheDocument();
+      expect(readout("18.0%")).toBeInTheDocument();
+    });
+
+    it("pair-fills within a nested level without touching the top level", async () => {
+      const { user } = renderForm(groupedConfig);
+      await fill(user, input(US_IN), "80");
+      expect(input(INTL_IN)).toHaveValue(20);
+      expect(input(STOCKS)).toHaveValue(60);
+      expect(input(BONDS_TOP)).toHaveValue(40);
+    });
+
+    it("does not render a group with no category below it", () => {
+      const withEmpty: ConfigSummary = {
+        ...groupedConfig,
+        groups: [...groupedConfig.groups, { name: "Empty", parent: null, target: 50 }],
+      };
+      renderForm(withEmpty);
+      expect(screen.queryByLabelText("Empty % of portfolio")).toBeNull();
+      expect(screen.queryByText(/Top level: must add up/)).toBeNull();
+    });
+
+    it("re-labels a category moved to the top level and keeps other edits", async () => {
+      const { user, rerender } = renderForm(groupedConfig);
+      await fill(user, input(BONDS_TOP), "30");
+      const moved: ConfigSummary = {
+        ...groupedConfig,
+        categories: groupedConfig.categories.map((c) =>
+          c.name === "International" ? { ...c, parent: null } : c,
+        ),
+      };
+      await rerender({ config: moved });
+      expect(input(INTL)).toHaveValue(30); // now "% of portfolio"
+      expect(screen.queryByLabelText(INTL_IN)).toBeNull();
+      expect(input(BONDS_TOP)).toHaveValue(30);
+    });
+  });
+
+  describe("level errors", () => {
+    it("shows a nested level's message beside that level only, with aria wiring", async () => {
+      const { user } = renderForm(groupedConfig);
+      await fill(user, input(INTL_IN), "");
+      const stocks = screen.getByRole("group", { name: "Stocks" });
+      const message = within(stocks).getByText("Stocks: must add up to 100% (currently 70.0%).");
+      expect(message).toHaveClass("sum-indicator", "err");
+      expect(message).not.toHaveAttribute("role", "alert");
+      for (const label of [US_IN, INTL_IN]) {
+        expect(input(label)).toHaveAttribute("aria-invalid", "true");
+        expect(input(label)).toHaveAccessibleDescription(message.textContent!);
+      }
+      expect(input(STOCKS)).not.toHaveAttribute("aria-invalid");
+      expect(screen.queryByText(/^Top level/)).toBeNull();
+    });
+
+    it("shows a top-level message for the top level", async () => {
+      const { user } = renderForm(groupedConfig);
+      await fill(user, input(BONDS_TOP), "");
+      expect(screen.getByText("Top level: must add up to 100% (currently 60.0%).")).toBeVisible();
+      expect(input(STOCKS)).toHaveAttribute("aria-invalid", "true");
+      expect(input(BONDS_TOP)).toHaveAttribute("aria-invalid", "true");
+      expect(input(US_IN)).not.toHaveAttribute("aria-invalid");
+    });
+
+    it("reports an out-of-range share instead of the total", async () => {
+      const { user } = renderForm(groupedConfig);
+      await fill(user, input(US_IN), "150");
+      expect(
+        screen.getByText("Stocks: each share must be between 0% and 100%."),
+      ).toBeInTheDocument();
+    });
+
+    it("clears the message once the level adds up again", async () => {
+      const { user, levelErrors } = renderForm();
+      await fill(user, input(BONDS), "15");
+      expect(levelErrors()).toHaveLength(1);
+      await fill(user, input(BONDS), "20");
+      expect(levelErrors()).toHaveLength(0);
+      expect(input(BONDS)).not.toHaveAttribute("aria-invalid");
+    });
+  });
+
+  describe("edits and config changes", () => {
+    it("keeps edits across a re-render with a new config object", async () => {
       const { user, rerender } = renderForm();
       await fill(user, input(BONDS), "30");
-      await rerender({ categories: config.categories.map((c) => ({ ...c })) });
+      await rerender({ config: structuredClone(config) });
       expect(input(BONDS)).toHaveValue(30);
       await rerender({ allocation: { ...allocation } });
       expect(input(BONDS)).toHaveValue(30);
@@ -91,57 +245,69 @@ describe("RebalanceForm", () => {
     it("adds an input with its default for a new category without touching edits", async () => {
       const { user, rerender } = renderForm();
       await fill(user, input(BONDS), "30");
-      const added: Category = { name: "Gold", buy_symbol: "GLD", target: 5, color: "#eda100" };
-      await rerender({ categories: [...config.categories, added] });
-      expect(input("Gold (GLD)")).toHaveValue(5);
+      const added: Category = {
+        name: "Gold",
+        buy_symbol: "GLD",
+        parent: null,
+        target: 5,
+        color: "#eda100",
+      };
+      await rerender({ config: { ...config, categories: [...config.categories, added] } });
+      expect(input("Gold % of portfolio")).toHaveValue(5);
       expect(input(BONDS)).toHaveValue(30);
       expect(input(US)).toHaveValue(48);
     });
 
     it("gives a new category without a target an empty input", async () => {
       const { rerender } = renderForm();
-      const added: Category = { name: "Gold", buy_symbol: "GLD", target: null, color: "#eda100" };
-      await rerender({ categories: [...config.categories, added] });
-      expect(input("Gold (GLD)")).toHaveValue(null);
+      const added: Category = {
+        name: "Gold",
+        buy_symbol: "GLD",
+        parent: null,
+        target: null,
+        color: "#eda100",
+      };
+      await rerender({ config: { ...config, categories: [...config.categories, added] } });
+      expect(input("Gold % of portfolio")).toHaveValue(null);
     });
 
-    it("drops the input of a removed category and excludes it from the total", async () => {
-      const { rerender, indicator } = renderForm();
-      await rerender({ categories: config.categories.slice(0, 2) });
+    it("drops the input of a removed category and re-checks the level", async () => {
+      const { rerender } = renderForm();
+      await rerender({ config: twoFlat });
       expect(screen.queryByLabelText(BONDS)).toBeNull();
-      expect(indicator()).toHaveTextContent("Total: 80.0%");
-      expect(indicator()).toHaveClass("err");
+      expect(screen.getByText("Top level: must add up to 100% (currently 80.0%).")).toBeVisible();
     });
 
     it("follows a changed default for rows the user has not edited", async () => {
       const { user, rerender } = renderForm();
       await fill(user, input(US), "10");
       await rerender({
-        categories: config.categories.map((c) => ({ ...c, target: 25 })),
+        config: { ...config, categories: config.categories.map((c) => ({ ...c, target: 25 })) },
       });
       expect(input(INTL)).toHaveValue(25);
       expect(input(US)).toHaveValue(10);
     });
   });
 
-  describe("total indicator", () => {
-    it("updates live as the inputs are edited", async () => {
-      const { user, indicator } = renderForm();
-      await fill(user, input(US), "30");
-      await fill(user, input(INTL), "50");
-      expect(indicator()).toHaveTextContent("Total: 100.0%");
-      expect(indicator()).toHaveClass("ok");
-      expect(indicator()).not.toHaveClass("err");
+  describe("empty tree", () => {
+    it("shows a hint and no submit button when there are no categories", () => {
+      render(RebalanceForm, {
+        props: { allocation, config: { ...config, categories: [] }, onResult: vi.fn() },
+      });
+      expect(screen.getByText("Add a category to set targets.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
     });
 
-    it("turns into an error state when the total is off or an input is out of range", async () => {
-      const { user, indicator } = renderForm();
-      await fill(user, input(US), "40");
-      expect(indicator()).toHaveTextContent("Total: 92.0%");
-      expect(indicator()).toHaveClass("err");
-      expect(indicator()).not.toHaveClass("ok");
-      await fill(user, input(US), "150");
-      expect(indicator()).toHaveClass("err");
+    it("treats a group without categories as empty", () => {
+      render(RebalanceForm, {
+        props: {
+          allocation,
+          config: { ...groupedConfig, categories: [] },
+          onResult: vi.fn(),
+        },
+      });
+      expect(screen.getByText("Add a category to set targets.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
     });
   });
 
@@ -161,7 +327,7 @@ describe("RebalanceForm", () => {
     it.each([
       ["negative", "-1"],
       ["above 100", "101"],
-    ])("rejects a %s target", async (_name, value) => {
+    ])("rejects a %s share", async (_name, value) => {
       const { user, amount } = renderForm();
       await fill(user, amount, "5000");
       await fill(user, input(BONDS), value);
@@ -170,18 +336,30 @@ describe("RebalanceForm", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("rejects targets that do not add up to 100%", async () => {
-      const { user, amount } = renderForm();
+    it("rejects shares that do not add up to 100%", async () => {
+      const { user, amount, onResult } = renderForm();
       await fill(user, amount, "5000");
       await fill(user, input(BONDS), "15");
       await submit(user);
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Targets must add up to 100% (currently 95.0%).",
+        "Top level: must add up to 100% (currently 95.0%).",
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(onResult).not.toHaveBeenCalled();
+    });
+
+    it("rejects a nested level that does not add up", async () => {
+      const { user, amount } = renderForm(groupedConfig);
+      await fill(user, amount, "5000");
+      await fill(user, input(INTL_IN), "");
+      await submit(user);
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Stocks: must add up to 100% (currently 70.0%).",
       );
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("reports the amount problem before target problems", async () => {
+    it("reports the amount problem before share problems", async () => {
       const { user } = renderForm();
       await fill(user, input(BONDS), "150");
       await submit(user);
@@ -248,13 +426,44 @@ describe("RebalanceForm", () => {
     it("omits a removed category from the request", async () => {
       mockFetch.mockResolvedValue(rebalance);
       const { user, amount, rerender, onResult } = renderForm();
-      await rerender({ categories: config.categories.slice(0, 2) });
+      await rerender({ config: twoFlat });
       await fill(user, amount, "5000");
       await fill(user, input(INTL), "52");
       await submit(user);
 
       await waitFor(() => expect(onResult).toHaveBeenCalled());
       expect(mockFetch.mock.calls[0][1].target).toEqual({ "US Stocks": 48, International: 52 });
+    });
+
+    it("sends whole-portfolio targets for categories only when grouped", async () => {
+      mockFetch.mockResolvedValue(rebalance);
+      const { user, amount, onResult } = renderForm(groupedConfig);
+      await fill(user, amount, "5000");
+      await submit(user);
+
+      await waitFor(() => expect(onResult).toHaveBeenCalled());
+      const [passedAllocation, request] = mockFetch.mock.calls[0];
+      expect(passedAllocation).toBe(allocation);
+      expect(request.investment_amount).toBe(5000);
+      expect(Object.keys(request.target).sort()).toEqual(["Bonds", "International", "US Stocks"]);
+      expect(request.target["US Stocks"]).toBeCloseTo(42);
+      expect(request.target.International).toBeCloseTo(18);
+      expect(request.target.Bonds).toBeCloseTo(40);
+    });
+
+    it("uses edited nested shares in the request", async () => {
+      mockFetch.mockResolvedValue(rebalance);
+      const { user, amount, onResult } = renderForm(blankGrouped);
+      await fill(user, amount, "100");
+      await fill(user, input(STOCKS), "50"); // fills Bonds 50
+      await fill(user, input(US_IN), "80"); // fills International 20
+      await submit(user);
+
+      await waitFor(() => expect(onResult).toHaveBeenCalled());
+      const { target } = mockFetch.mock.calls[0][1];
+      expect(target["US Stocks"]).toBeCloseTo(40);
+      expect(target.International).toBeCloseTo(10);
+      expect(target.Bonds).toBeCloseTo(50);
     });
 
     it("shows a calculating state while the request is pending", async () => {
