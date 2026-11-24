@@ -16,16 +16,35 @@ export interface PortfolioSnapshot {
   snapshot_date: string | null;
 }
 
-export interface AllocationBucket {
-  bucket: "VTI" | "VXUS" | "BND";
+/** A user-defined category (asset class) as stored in config.yaml. */
+export interface Category {
+  name: string;
+  /** ETF suggested when buying into this category. */
+  buy_symbol: string;
+  /** Default target percent that pre-fills the rebalance form. */
+  target: number | null;
+  color: string;
+}
+
+/** The editable fields of a category. */
+export interface CategoryInput {
+  name: string;
+  buy_symbol: string;
+  target: number | null;
+}
+
+export interface CategoryAllocation {
+  category: string;
   current_value: number;
   percent_of_included: number;
 }
 
 export interface AllocationBreakdown {
-  buckets: AllocationBucket[];
+  /** In config category order, zero-value categories included. */
+  categories: CategoryAllocation[];
   included_value: number;
   excluded_value: number;
+  unassigned_value: number;
   total_value: number;
 }
 
@@ -34,11 +53,8 @@ export interface UploadResponse {
   allocation: AllocationBreakdown;
 }
 
-export interface TargetAllocation {
-  vti: number;
-  vxus: number;
-  bnd: number;
-}
+/** Target percent (0-100) per category name. */
+export type TargetAllocation = Record<string, number>;
 
 export interface RebalanceRequest {
   investment_amount: number;
@@ -46,7 +62,7 @@ export interface RebalanceRequest {
 }
 
 export interface BuyRecommendation {
-  bucket: string;
+  category: string;
   symbol: string;
   target_percent: number;
   current_percent: number;
@@ -63,9 +79,11 @@ export interface RebalanceResult {
 }
 
 export interface ConfigSummary {
-  direct_mappings: Record<string, string>;
-  fractional_mappings: Record<string, Record<string, number>>;
+  categories: Category[];
+  /** SYMBOL -> {category: weight 0-1}; direct mappings appear as {category: 1}. */
+  assignments: Record<string, Record<string, number>>;
   exclusions: string[];
-  primary_symbols: Record<string, string>;
-  default_target: TargetAllocation | null;
 }
+
+/** Body of an assignment change: split across categories, or exclude from allocation. */
+export type AssignmentUpdate = { weights: Record<string, number> } | { excluded: true };

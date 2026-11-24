@@ -2,11 +2,12 @@
  * Shared test fixtures shaped like real API responses.
  *
  * The numbers are internally consistent: `rebalance` is what the backend returns for
- * `allocation` with a $1,000 investment and the `config.default_target` weights.
+ * `allocation` with a $1,000 investment and the `config` category targets.
  */
 import type {
   AllocationBreakdown,
   ConfigSummary,
+  HoldingRow,
   PortfolioSnapshot,
   RebalanceResult,
 } from "../types";
@@ -59,34 +60,70 @@ export const portfolio: PortfolioSnapshot = {
   snapshot_date: null,
 };
 
-// The API returns buckets in alphabetical order.
+// A holding that `config` does not map; add it with `[...portfolio.holdings, unassignedHolding]`.
+export const unassignedHolding: HoldingRow = {
+  symbol: "MYSTERY",
+  description: "MYSTERY FUND",
+  quantity: 10,
+  last_price: 50,
+  current_value: 500,
+  cost_basis: null,
+  total_gain_loss: null,
+  percent_of_account: 4.3478,
+};
+
+export const colors: Record<string, string> = {
+  "US Stocks": "#2a78d6",
+  International: "#eb6834",
+  Bonds: "#1baf7a",
+};
+
+// Categories come back in config order, zero-value ones included.
 export const allocation: AllocationBreakdown = {
-  buckets: [
-    { bucket: "BND", current_value: 1000, percent_of_included: 10 },
-    { bucket: "VTI", current_value: 6000, percent_of_included: 60 },
-    { bucket: "VXUS", current_value: 3000, percent_of_included: 30 },
+  categories: [
+    { category: "US Stocks", current_value: 6000, percent_of_included: 60 },
+    { category: "International", current_value: 3000, percent_of_included: 30 },
+    { category: "Bonds", current_value: 1000, percent_of_included: 10 },
   ],
   included_value: 10000,
   excluded_value: 1000,
+  unassigned_value: 0,
   total_value: 11000,
 };
 
-// symbolsByBucket(config)     -> { VTI: ["FZROX", "ITOT", "VTI"], VXUS: ["FZROX", "VXUS"], BND: ["BND"] }
-// bucketLabelBySymbol(config) -> { VTI: "VTI", VXUS: "VXUS", BND: "BND", ITOT: "VTI",
-//                                  FZROX: "VTI/VXUS", SPAXX: "Excl." }
-export const config: ConfigSummary = {
-  direct_mappings: { VTI: "VTI", VXUS: "VXUS", BND: "BND", ITOT: "VTI" },
-  fractional_mappings: { FZROX: { VTI: 0.7, VXUS: 0.3 } },
-  exclusions: ["SPAXX"],
-  primary_symbols: { VTI: "VTI", VXUS: "VXUS", BND: "BND" },
-  default_target: { vti: 48, vxus: 32, bnd: 20 },
+// `allocation` plus the unassigned holding: total = included + excluded + unassigned.
+export const allocationWithUnassigned: AllocationBreakdown = {
+  ...allocation,
+  unassigned_value: 500,
+  total_value: 11500,
 };
 
-// Post-trade allocation (new total 11,000): VTI 54.5%, VXUS 30.0%, BND 15.4%.
+// colorsByCategory(config)   -> `colors`
+// symbolsByCategory(config)  -> { "US Stocks": ["FZROX", "ITOT", "VTI"],
+//                                 International: ["FZROX", "VXUS"], Bonds: ["BND"] }
+// assignmentLabel(assignmentOf(config, symbol)): FZROX -> "US Stocks 70% · International 30%",
+//   SPAXX -> "Excluded", MYSTERY -> "Unassigned"
+export const config: ConfigSummary = {
+  categories: [
+    { name: "US Stocks", buy_symbol: "VTI", target: 48, color: "#2a78d6" },
+    { name: "International", buy_symbol: "VXUS", target: 32, color: "#eb6834" },
+    { name: "Bonds", buy_symbol: "BND", target: 20, color: "#1baf7a" },
+  ],
+  assignments: {
+    VTI: { "US Stocks": 1 },
+    ITOT: { "US Stocks": 1 },
+    VXUS: { International: 1 },
+    BND: { Bonds: 1 },
+    FZROX: { "US Stocks": 0.7, International: 0.3 },
+  },
+  exclusions: ["SPAXX"],
+};
+
+// Post-trade allocation (new total 11,000): US Stocks 54.5%, International 30.0%, Bonds 15.4%.
 export const rebalance: RebalanceResult = {
   recommendations: [
     {
-      bucket: "VTI",
+      category: "US Stocks",
       symbol: "VTI",
       target_percent: 48,
       current_percent: 60,
@@ -96,7 +133,7 @@ export const rebalance: RebalanceResult = {
       buy_percent_of_investment: 0,
     },
     {
-      bucket: "VXUS",
+      category: "International",
       symbol: "VXUS",
       target_percent: 32,
       current_percent: 30,
@@ -106,7 +143,7 @@ export const rebalance: RebalanceResult = {
       buy_percent_of_investment: 30.233,
     },
     {
-      bucket: "BND",
+      category: "Bonds",
       symbol: "BND",
       target_percent: 20,
       current_percent: 10,
