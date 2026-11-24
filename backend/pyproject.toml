@@ -5,7 +5,7 @@ description = "FastAPI backend for the investment dashboard: Fidelity CSV parsin
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.136.1",
+    "fastapi>=0.165.0",
     "pydantic>=2.14.4",
     "python-multipart>=0.0.34",
     "ruamel-yaml>=0.19.1",
