@@ -1,0 +1,85 @@
+// Dev container for the investment dashboard (FastAPI + React/Vite),
+// with Claude Code running inside a locked-down sandbox.
+{
+  "name": "investment-dashboard",
+  "build": { "dockerfile": "Dockerfile" },
+
+  "remoteUser": "vscode",
+
+  // Fixed path: .devcontainer/fix-volume-owners.sh relies on it.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/investment-dashboard,type=bind",
+  "workspaceFolder": "/workspaces/investment-dashboard",
+
+  // Needed only so the firewall script (run as root) can set iptables rules.
+  // The vscode user cannot use these: it has no general sudo (see Dockerfile).
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+
+  "mounts": [
+    // The sandbox's own config is read-only inside the container, so the agent
+    // can't loosen its own walls (e.g. add an initializeCommand that runs on your host).
+    "source=${localWorkspaceFolder}/.devcontainer,target=${containerWorkspaceFolder}/.devcontainer,type=bind,readonly",
+
+    // The agent can commit and branch, but .git/config and .git/hooks are read-only,
+    // so it can't plant hooks or settings (core.fsmonitor, core.hooksPath, new remotes)
+    // that would run on your host the next time you use git there.
+    // Pushing is impossible from inside: no credentials, no SSH agent, and the
+    // firewall blocks github.com. You review the agent's branch, merge, and push from the host.
+    "source=${localWorkspaceFolder}/.git/config,target=${containerWorkspaceFolder}/.git/config,type=bind,readonly",
+    "source=${localWorkspaceFolder}/.git/hooks,target=${containerWorkspaceFolder}/.git/hooks,type=bind,readonly",
+
+    // Keep Linux-built deps out of the host checkout (the host has its own
+    // macOS .venv / node_modules, which contain incompatible native binaries).
+    "source=${localWorkspaceFolderBasename}-venv,target=${containerWorkspaceFolder}/backend/.venv,type=volume",
+    "source=${localWorkspaceFolderBasename}-node_modules,target=${containerWorkspaceFolder}/frontend/node_modules,type=volume",
+
+    // Claude Code login + settings survive rebuilds without touching your real home folder.
+    "source=claude-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
+
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "UV_PYTHON_DOWNLOADS": "never",
+    "UV_LINK_MODE": "copy",
+    "UV_PROJECT_ENVIRONMENT": "${containerWorkspaceFolder}/backend/.venv",
+    "APP_ENV": "development"
+  },
+
+  // Don't hand your SSH agent (and therefore your keys) to the container.
+  "remoteEnv": { "SSH_AUTH_SOCK": "" },
+
+  // Runs once, before the firewall is up.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // Runs on every start: lock down outbound network to the allowlist.
+  "postStartCommand": "sudo /usr/local/bin/sandbox-firewall.sh",
+  "waitFor": "postStartCommand",
+
+  "forwardPorts": [8000, 5173],
+  "portsAttributes": {
+    "8000": { "label": "API (FastAPI)" },
+    "5173": { "label": "Frontend (Vite)", "onAutoForward": "openBrowser" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "dbaeumer.vscode-eslint",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/backend/.venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.cwd": "${containerWorkspaceFolder}/backend",
+        "python.testing.pytestArgs": ["tests"],
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  }
+}
