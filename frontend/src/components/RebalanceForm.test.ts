@@ -390,8 +390,8 @@ describe("RebalanceForm", () => {
     });
 
     it("shows a calculating state while the request is pending", async () => {
-      let resolve!: (result: RebalanceResult) => void;
-      mockFetch.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { promise, resolve } = Promise.withResolvers<RebalanceResult>();
+      mockFetch.mockReturnValue(promise);
       const { user, amount } = renderForm();
       await fill(user, amount, "5000");
       await submit(user);

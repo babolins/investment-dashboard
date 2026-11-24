@@ -201,9 +201,7 @@ describe("AssignmentPill saving", () => {
   });
 
   it("disables the controls while saving and does not send twice", async () => {
-    // Manual deferred: Promise.withResolvers isn't available on Node 20 (CI).
-    let resolve!: (value: ConfigSummary) => void;
-    const promise = new Promise<ConfigSummary>((r) => (resolve = r));
+    const { promise, resolve } = Promise.withResolvers<ConfigSummary>();
     vi.mocked(setAssignment).mockReturnValue(promise);
     const { user, pill, onChange } = setup("NEW");
     await user.click(pill);
