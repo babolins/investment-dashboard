@@ -278,6 +278,18 @@ def test_create_invalid_input_is_config_error_and_file_unchanged(
     assert path.read_bytes() == before
 
 
+def test_validation_errors_are_readable(tmp_path: Path):
+    """Users see the message itself, not pydantic's dump of the whole config."""
+    store, _ = make_store(tmp_path, SIMPLE_V2)
+    with pytest.raises(ConfigError) as excinfo:
+        store.create_category("Excluded", "VTI", None)
+    message = str(excinfo.value)
+    assert "reserved" in message.lower()
+    assert "validation error" not in message
+    assert "input_value" not in message
+    assert "Value error" not in message
+
+
 def test_create_when_config_is_invalid_raises_and_does_not_write(tmp_path: Path):
     bad = SIMPLE_V2.replace("direct_mappings: {}", "direct_mappings:\n  AAPL: Nowhere")
     store, path = make_store(tmp_path, bad)

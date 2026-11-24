@@ -312,7 +312,7 @@ class ConfigStore:
         try:
             config = AllocationConfig.model_validate(doc)
         except ValidationError as exc:
-            raise ConfigError(str(exc)) from exc
+            raise ConfigError(_describe(exc)) from exc
         _persist_leaf_colors(doc, config)
         buffer = io.StringIO()
         yaml.dump(doc, buffer)
@@ -576,6 +576,17 @@ def _replace_legacy_banner(doc: CommentedMap, previous_key: str) -> None:
     if token is not None and "primary_symbols" in token.value:
         eol = token.value.partition("\n")[0]
         token.value = eol + "\n\n" + _CATEGORIES_BANNER
+
+
+def _describe(exc: ValidationError) -> str:
+    """A user-facing message: each error's text (with its field path), not pydantic's full dump,
+    which would echo the whole config back to the UI."""
+    parts = []
+    for error in exc.errors():
+        message = error["msg"].removeprefix("Value error, ")
+        location = ".".join(str(part) for part in error["loc"])
+        parts.append(f"{location}: {message}" if location else message)
+    return "; ".join(parts)
 
 
 def get_store() -> ConfigStore:
