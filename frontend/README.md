@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Runs at `http://localhost:5173`. Requests to `/api` and `/health` are proxied to the backend at `http://localhost:8000` (configured in `vite.config.ts`). Start the backend first.
+Runs at `http://localhost:5173`. Requests to `/api` and `/health` are proxied to the backend at `http://localhost:8000` (configured in `vite.config.ts`). Start the backend first, or run `../run.sh` from here to start both together.
 
 ## Checks
 
@@ -26,7 +26,7 @@ npm test              # Vitest + Testing Library (jsdom); `npm run test:watch` t
 npm run build
 ```
 
-Type-checks with svelte-check, then builds. Outputs to `dist/`. In production this directory is copied into the Docker image and served directly by FastAPI — there is no separate nginx container.
+Type-checks with svelte-check, then builds. Outputs to `dist/`. FastAPI serves this directory directly (no nginx): the Docker image copies it in, and a local `uvicorn` picks up `frontend/dist` on its own. `../run.sh prod` builds the frontend and starts that single server.
 
 ## Project layout
 

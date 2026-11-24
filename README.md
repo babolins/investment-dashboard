@@ -55,27 +55,31 @@ The backend reads its config from the first of: `CONFIG_PATH`, `/etc/investment-
 
 You can manage categories and assignments entirely from the UI, or edit the YAML by hand. Older config files (with `primary_symbols` / `default_target_allocations`) are upgraded automatically; the file is rewritten in the new format on the first save.
 
-### Run the backend
+### Run the app
+
+One command starts everything:
 
 ```bash
-cd backend
-uv sync
-uv run uvicorn app.main:app --reload
+./run.sh          # dev: open http://localhost:5173
+./run.sh prod     # production build: open http://localhost:8000
 ```
 
-The API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+- **`dev`** runs the FastAPI backend with auto-reload on port 8000 and the Vite dev server with hot reload on port 5173. Vite proxies `/api` to the backend. Ctrl-C stops both, and if either server exits, the other is stopped too.
+- **`prod`** builds the frontend, then a single uvicorn process serves the API and the UI on one port (`HOST`/`PORT` override the default `127.0.0.1:8000`). This is the same setup the Docker image uses.
 
-### Run the frontend
+`frontend/node_modules` is installed on first run if missing; `uv run` keeps the backend environment in sync automatically. The API docs are at `http://localhost:8000/docs` in both modes.
 
-In a separate terminal:
+<details>
+<summary>Running the pieces by hand</summary>
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd backend && uv run uvicorn app.main:app --reload     # API on :8000
+cd frontend && npm run dev                             # UI on :5173, proxies /api to :8000
 ```
 
-The Vite dev server runs at `http://localhost:5173` and proxies `/api` requests to the backend automatically.
+The backend serves the built frontend whenever it finds one: `STATIC_DIR` if set, else `backend/static/` (the Docker layout), else `frontend/dist/` (after `npm run build`). So `npm run build` followed by uvicorn alone also gives you the whole app on :8000.
+
+</details>
 
 ### Checks
 
@@ -120,6 +124,7 @@ The container serves both the API and the built frontend on a single port (defau
 | `PORT`            | `8000`                                  | Host port to bind                                                                               |
 | `CONFIG_PATH`     | `/etc/investment-dashboard/config.yaml` | Path to config inside the container                                                             |
 | `APP_ENV`         | `production`                            | Application environment                                                                         |
+| `STATIC_DIR`      | _(auto)_                                | Directory of built frontend assets to serve; defaults to the bundled build                      |
 | `VITE_API_URL`    | _(empty)_                               | Set at build time if the API is on a different host; leave empty for same-origin `/api` routing |
 | `COMPOSE_NETWORK` | `investment-dashboard`                  | Docker network name                                                                             |
 

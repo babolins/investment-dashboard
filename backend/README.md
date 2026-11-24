@@ -9,7 +9,9 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
-API available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+API available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`. To run the backend and frontend together with one command, use `../run.sh` (see the root README).
+
+If built frontend assets are present, uvicorn serves them too, so one process is the whole app. It looks in `STATIC_DIR`, then `./static` (the Docker layout), then `../frontend/dist`.
 
 The Vite dev server (`npm run dev` in `../frontend`) proxies `/api` to this port automatically, so you never need to set `VITE_API_URL` locally.
 
