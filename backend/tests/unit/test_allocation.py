@@ -66,6 +66,19 @@ def test_categories_follow_config_order_and_include_zero_value():
     assert by_cat["Bonds"].percent_of_included == 0.0
 
 
+def test_breakdown_lists_only_leaf_categories():
+    config = make_config(
+        categories={
+            "Stocks": CategoryConfig(),
+            "US Stocks": CategoryConfig(buy_symbol="VTI", parent="Stocks"),
+            "Bonds": CategoryConfig(buy_symbol="BND"),
+        },
+        direct_mappings={"VTI": "US Stocks"},
+    )
+    result = compute_allocation(make_snapshot(("VTI", 1000)), config)
+    assert [c.category for c in result.categories] == ["US Stocks", "Bonds"]
+
+
 def test_exclusion_removes_from_included():
     snap = make_snapshot(("VTI", 8000), ("SPAXX", 2000))
     result = compute_allocation(snap, make_config(exclusions=["SPAXX"]))

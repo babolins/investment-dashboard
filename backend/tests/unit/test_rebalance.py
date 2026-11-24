@@ -152,6 +152,23 @@ def test_unknown_target_category_is_rejected():
         compute_rebalance(breakdown3(1000, 1000, 1000), req, make_config())
 
 
+def test_parent_category_is_not_a_target_and_buy_symbol_may_be_missing():
+    config = AllocationConfig(
+        categories={
+            "Stocks": CategoryConfig(),
+            US: CategoryConfig(buy_symbol="VTI", parent="Stocks"),
+            BONDS: CategoryConfig(),
+        },
+    )
+    bd = make_breakdown({US: 1000, BONDS: 1000})
+    bad = RebalanceRequest(investment_amount=1000, target={"Stocks": 50, BONDS: 50})
+    with pytest.raises(ConfigError, match="Stocks"):
+        compute_rebalance(bd, bad, config)
+    ok = RebalanceRequest(investment_amount=1000, target={US: 50, BONDS: 50})
+    result = compute_rebalance(bd, ok, config)
+    assert {r.category: r.symbol for r in result.recommendations} == {US: "VTI", BONDS: None}
+
+
 def test_zero_portfolio_distributes_by_target():
     """If portfolio is empty (first investment), buy purely by target weights."""
     result = compute_rebalance(breakdown3(0, 0, 0), make_request(9000, 60, 30, 10), make_config())

@@ -16,11 +16,11 @@ router = APIRouter(tags=["rebalance"])
 @router.post("/rebalance", response_model=RebalanceResult)
 def rebalance(body: RebalanceAPIRequest, config: ConfigDep) -> RebalanceResult:
     """
-    Compute buy guidance for the configured categories.
+    Compute buy guidance for the configured leaf categories.
 
     The client must supply the AllocationBreakdown from /api/upload or
     /api/allocation (it is stateless — no server-side session).  A target
-    naming an unknown category is a 422.
+    naming an unknown or non-leaf category is a 422.
     """
     return compute_rebalance(
         breakdown=body.to_breakdown(), request=body.to_request(), config=config

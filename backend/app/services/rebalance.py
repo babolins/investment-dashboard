@@ -7,10 +7,10 @@ Given:
   - current allocation breakdown (per category; excluded and unassigned
     holdings are not part of it)
   - investment_amount  (new cash to deploy)
-  - target weights     (per category, sum to 100; a category left out counts as 0)
+  - target weights     (per leaf category, sum to 100; one left out counts as 0)
 
 Step 1: Compute new_total = included_value + investment_amount
-Step 2: For each configured category (in config order):
+Step 2: For each leaf category (in config order):
           target_value  = new_total * (target_weight / 100)
           raw_buy       = max(0, target_value - current_value)
 Step 3: Scale raw_buy amounts so they sum to investment_amount.
@@ -91,12 +91,14 @@ def compute_rebalance(
     Raises
     ------
     ConfigError
-        If the target names a category that is not in the config.
+        If the target names a category that is unknown or has sub-categories.
     """
-    cats = config.category_names
+    cats = config.leaf_names
     unknown = sorted(set(request.target) - set(cats))
     if unknown:
-        raise ConfigError(f"Unknown categories in target: {unknown}. Defined: {cats}")
+        raise ConfigError(
+            f"Unknown or non-leaf categories in target: {unknown}. Targets go to: {cats}"
+        )
 
     inv = request.investment_amount
     target_map = {c: request.target.get(c, 0.0) for c in cats}

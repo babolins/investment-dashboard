@@ -3,28 +3,22 @@ version: "2"
 # ---------------------------------------------------------------------------
 # categories
 # ---------------------------------------------------------------------------
-# Your allocation categories, in display order (at most 8).  The key is the
-# name shown in the UI (1-40 characters, no "/", unique ignoring case, and not
-# "Excluded" or "Unassigned").  You can also add, rename and delete categories
-# in the app, which rewrites this file (your comments are kept).
-#   buy_symbol: the ETF to recommend when the rebalancer says "buy into this
-#               category".
-#   target:     optional default target in percent (0-100), used to pre-fill
-#               the rebalance form.  Targets only need to add up to 100 when
-#               you actually rebalance.
-#   color:      assigned automatically; any #rrggbb value works.
-#   parent:     optional name of a group (see below); omitted = top level.
-#
-# Groups (optional) nest categories, e.g. Stocks 60% / Bonds 40%, then within
-# Stocks US 70% / International 30%.  Add a `groups:` section above
-# `categories:` (the app creates it when you add the first group):
-#   groups:
-#     Stocks:
-#       target: 60        # default percent of the parent group
-#       parent: Equity    # optional; another group, never a category
-# A target is always a percent of the item's parent (of the whole portfolio at
-# the top level).  Names are unique across groups and categories, ignoring
-# case.  Holdings are only ever assigned to categories, never to groups.
+# Your allocation categories, in display order.  The key is the name shown in
+# the UI (1-40 characters, no "/", unique ignoring case, and not "Excluded" or
+# "Unassigned").  You can also add, rename and delete categories in the app,
+# which rewrites this file (your comments are kept).
+#   buy_symbol: optional; the ETF to recommend when the rebalancer says "buy
+#               into this category".
+#   target:     optional default target in percent (0-100) of the parent
+#               category (of the whole portfolio at top level), used to
+#               pre-fill the rebalance form.  Targets only need to add up to
+#               100 when you actually rebalance.
+#   color:      assigned automatically to leaves; any #rrggbb value works.
+#   parent:     optional name of another category to nest this one in;
+#               omitted = top level.
+# A category with nothing inside it is a leaf (at most 8): securities are
+# assigned to leaves only, and only leaves appear in the allocation chart and
+# buy guidance.  A category with sub-categories just groups its children.
 categories:
   VTI:
     buy_symbol: VTI
@@ -42,7 +36,7 @@ categories:
 # ---------------------------------------------------------------------------
 # direct_mappings
 # ---------------------------------------------------------------------------
-# Map each ticker symbol to exactly one category (a name from `categories` above).
+# Map each ticker symbol to exactly one leaf category (a name from `categories` above).
 # Symbols are case-insensitive (normalized to upper-case internally).
 #
 # Add every symbol in your portfolio here, in fractional_mappings, or

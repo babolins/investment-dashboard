@@ -54,7 +54,9 @@ class CategoryAllocation(BaseModel):
 class AllocationBreakdown(BaseModel):
     """Result of grouping the portfolio into the configured categories."""
 
-    categories: list[CategoryAllocation]  # config order, zero-value categories included
+    categories: list[
+        CategoryAllocation
+    ]  # leaf categories in config order, zero-value ones included
     included_value: float  # Value assigned to categories
     excluded_value: float  # Value of excluded symbols (cash, money-market, etc.)
     unassigned_value: float  # Value of symbols with no category and no exclusion
@@ -80,7 +82,7 @@ def _sum_to_100(target: Mapping[str, float]) -> Mapping[str, float]:
     return target
 
 
-# category -> percent (0-100); a category left out counts as 0.  Whether the names exist
+# leaf category -> percent (0-100); one left out counts as 0.  Whether the names are leaves
 # needs the config, so that check lives in the rebalance service.
 Targets = Annotated[
     Mapping[str, Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]],  # Mapping: covariant
@@ -120,10 +122,10 @@ class RebalanceAPIRequest(BaseModel):
 
 
 class BuyRecommendation(BaseModel):
-    """Buy guidance for a single category."""
+    """Buy guidance for a single leaf category."""
 
     category: str
-    symbol: str  # The category's buy_symbol from config
+    symbol: str | None  # The category's buy_symbol from config, if it has one
     target_percent: float  # 0-100
     current_percent: float  # 0-100, of included portfolio
     current_value: float
@@ -143,25 +145,18 @@ class RebalanceResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class GroupSummary(BaseModel):
-    name: str
-    parent: str | None  # group name; None = top level
-    target: float | None  # default % of the parent (of the portfolio at the top level)
-
-
 class CategorySummary(BaseModel):
     name: str
-    buy_symbol: str
-    parent: str | None
-    target: float | None
-    color: str
+    parent: str | None  # another category's name; None = top level
+    target: float | None  # default % of the parent (of the portfolio at the top level)
+    buy_symbol: str | None
+    color: str | None  # set for leaves only
 
 
 class ConfigSummary(BaseModel):
     """The active config as the UI needs it."""
 
-    groups: list[GroupSummary]  # config order
-    categories: list[CategorySummary]  # display order
+    categories: list[CategorySummary]  # display order (parents and leaves)
     assignments: dict[str, dict[str, float]]  # symbol -> {category: weight 0-1}
     exclusions: list[str]
 
@@ -173,34 +168,20 @@ _Target = Annotated[float | None, Field(ge=0, le=100, allow_inf_nan=False)]
 
 class CategoryCreate(BaseModel):
     name: str
-    buy_symbol: str
+    buy_symbol: str | None = None
     target: _Target = None
-    parent: str | None = None  # group to create it in; omitted/null = top level
+    parent: str | None = None  # category to create it in; omitted/null = top level
 
 
 class CategoryUpdate(BaseModel):
-    """Partial update: omitted fields stay; ``target: null`` clears the default target and
-    ``parent: null`` moves the category to the top level (``name: null`` is "omitted")."""
+    """Partial update: omitted fields stay; ``target: null`` clears the default target,
+    ``buy_symbol: null`` clears the buy symbol and ``parent: null`` moves the category to
+    the top level (``name: null`` is "omitted")."""
 
     name: str | None = None
     buy_symbol: str | None = None
     target: _Target = None
     parent: str | None = None
-
-
-class GroupCreate(BaseModel):
-    name: str
-    parent: str | None = None
-    target: _Target = None
-
-
-class GroupUpdate(BaseModel):
-    """Partial update: omitted fields stay; ``parent: null`` = top level, ``target: null``
-    clears the default (``name: null`` is "omitted")."""
-
-    name: str | None = None
-    parent: str | None = None
-    target: _Target = None
 
 
 class AssignmentUpdate(BaseModel):

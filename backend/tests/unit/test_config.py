@@ -122,13 +122,19 @@ def test_buy_symbol_for():
     assert c.buy_symbol_for("International") == "VXUS"
 
 
+def test_buy_symbol_is_optional():
+    c = cfg(categories={"X": {"target": None, "color": PALETTE[0]}}, direct_mappings={})
+    assert c.categories["X"].buy_symbol is None
+    assert c.buy_symbol_for("X") is None
+
+
 def test_zero_categories_allowed_on_load():
     c = cfg(categories={}, direct_mappings={})
     assert c.categories == {}
     assert c.category_names == []
 
 
-def test_eight_categories_allowed_nine_rejected():
+def test_eight_leaf_categories_allowed_nine_rejected():
     eight = {f"Cat{i}": category("VTI", None, PALETTE[i]) for i in range(8)}
     assert len(cfg(categories=eight, direct_mappings={}).categories) == 8
     nine = {**eight, "Cat8": category("VTI", None, PALETTE[0])}

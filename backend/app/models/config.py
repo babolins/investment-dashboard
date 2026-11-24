@@ -5,25 +5,23 @@ File format
 -----------
 version: "2"
 
-# Optional containers for categories, nestable; insertion-ordered.
-groups:
-  Stocks:
-    target: 60          # optional default % of the parent group (top level: of the portfolio)
-    parent: null        # optional name of another group; omitted/null = top level
-
-# Ordered; the key is the display name (max 8, see MAX_CATEGORIES).
+# Ordered; the key is the display name.  Categories nest: one that nobody names as
+# `parent` is a leaf (at most MAX_CATEGORIES of them); securities are assigned to leaves only.
 categories:
+  Stocks:               # a bare body is fine; a category with sub-categories is a planning level
+    target: 60          # optional default target, % of the parent (top level: of the portfolio)
   US Stocks:
-    buy_symbol: VTI     # ETF suggested when buying into this category
-    parent: Stocks      # optional group; holdings are only ever assigned to categories
-    target: 60          # optional default target, % of the parent (pre-fills the rebalance form)
-    color: "#2a78d6"    # assigned automatically from PALETTE on creation
+    buy_symbol: VTI     # optional; ETF suggested when buying into this leaf
+    parent: Stocks      # optional name of another category; omitted/null = top level
+    target: 60          # optional, pre-fills the rebalance form
+    color: "#2a78d6"    # optional; a leaf without one gets the first unused PALETTE entry
+                        # (a parent's colour is ignored)
 
-# symbol -> category name
+# symbol -> leaf category name
 direct_mappings:
   VOO: US Stocks
 
-# symbol -> {category: weight, ...}; weights are > 0 and sum to 1.0
+# symbol -> {leaf category: weight, ...}; weights are > 0 and sum to 1.0
 fractional_mappings:
   VT: {US Stocks: 0.6, International: 0.4}
 
@@ -34,8 +32,7 @@ Version 1 files (``primary_symbols`` + ``default_target_allocations``, three fix
 VTI/VXUS/BND buckets) are migrated in memory on load by ``AllocationConfig``; the
 config store persists the v2 form on its first write.  Targets are *not* required to
 sum to 100 here; that is only checked when a rebalance is requested.  Names are unique
-(ignoring case) across groups *and* categories; groups are not limited in number and
-do not count towards the category cap.
+(ignoring case); categories with sub-categories do not count towards the cap.
 
 This module only reads: edits (which must keep the user's comments) live in
 ``app.services.config_store``.
@@ -52,7 +49,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
 
-# Validated categorical colours (light mode); a new category takes the first unused one.
+# Validated categorical colours (light mode); a leaf without one takes the first unused one.
 PALETTE: tuple[str, ...] = (
     "#2a78d6",
     "#eb6834",
@@ -63,7 +60,7 @@ PALETTE: tuple[str, ...] = (
     "#6250d6",
     "#e34948",
 )
-MAX_CATEGORIES = len(PALETTE)
+MAX_CATEGORIES = len(PALETTE)  # max leaf categories (those without sub-categories)
 # Names the UI uses for pseudo-categories in charts and tables.
 RESERVED_NAMES = frozenset({"excluded", "unassigned"})
 MAX_NAME_LENGTH = 40
@@ -77,25 +74,13 @@ def _strip_parent(v: object) -> object:
     return v.strip() if isinstance(v, str) else v
 
 
-class GroupConfig(BaseModel):
-    """A container for categories and other groups (the name is the key in ``groups``).
-
-    ``target`` is a percent of the parent group (of the portfolio at the top level).
-    """
-
-    parent: str | None = None
-    target: float | None = Field(default=None, ge=0, le=100)
-
-    _strip_parent = field_validator("parent", mode="before")(_strip_parent)
-
-
 class CategoryConfig(BaseModel):
     """One allocation category (the name is the key in ``AllocationConfig.categories``)."""
 
-    buy_symbol: str = Field(pattern=r"^[A-Z0-9.\-]{1,10}$")
-    parent: str | None = None  # a group name; None = top level
-    target: float | None = Field(default=None, ge=0, le=100)
-    color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    buy_symbol: str | None = Field(default=None, pattern=r"^[A-Z0-9.\-]{1,10}$")
+    parent: str | None = None  # another category's name; None = top level
+    target: float | None = Field(default=None, ge=0, le=100)  # % of the parent
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
     @field_validator("buy_symbol", mode="before")
     @classmethod
@@ -105,20 +90,20 @@ class CategoryConfig(BaseModel):
     _strip_parent = field_validator("parent", mode="before")(_strip_parent)
 
 
-def _clean_names[T](mapping: dict[str, T], kind: str) -> dict[str, T]:
-    """Strip keys and enforce the name rules shared by groups and categories."""
+def _clean_names[T](mapping: dict[str, T]) -> dict[str, T]:
+    """Strip keys and enforce the category name rules."""
     names: dict[str, T] = {}
     seen: set[str] = set()
     for raw, item in mapping.items():
         name = raw.strip()
         if not 1 <= len(name) <= MAX_NAME_LENGTH:
-            raise ValueError(f"{kind} name '{raw}' must be 1-{MAX_NAME_LENGTH} characters")
+            raise ValueError(f"Category name '{raw}' must be 1-{MAX_NAME_LENGTH} characters")
         if "/" in name:
-            raise ValueError(f"{kind} name '{name}' must not contain '/'")
+            raise ValueError(f"Category name '{name}' must not contain '/'")
         if name.lower() in RESERVED_NAMES:
-            raise ValueError(f"{kind} name '{name}' is reserved")
+            raise ValueError(f"Category name '{name}' is reserved")
         if name.lower() in seen:
-            raise ValueError(f"Duplicate {kind.lower()} name '{name}' (names are case-insensitive)")
+            raise ValueError(f"Duplicate category name '{name}' (names are case-insensitive)")
         seen.add(name.lower())
         names[name] = item
     return names
@@ -145,7 +130,6 @@ class AllocationConfig(BaseModel):
     """Validated in-memory representation of config.yaml."""
 
     version: str = "2"
-    groups: dict[str, GroupConfig] = Field(default_factory=dict)  # insertion-ordered
     categories: dict[str, CategoryConfig] = Field(default_factory=dict)  # insertion-ordered
     direct_mappings: dict[str, str] = Field(default_factory=dict)
     fractional_mappings: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -163,18 +147,18 @@ class AllocationConfig(BaseModel):
             return _migrate_v1(data)
         return data
 
-    @field_validator("groups", mode="before")
-    @classmethod
-    def _blank_groups(cls, v: object) -> object:
-        # A bare `groups:` loads as None, and so does a bare entry (`Stocks:`).
-        if not isinstance(v, dict):
-            return {} if v is None else v
-        return {name: {} if group is None else group for name, group in v.items()}
-
     @field_validator("categories", "direct_mappings", "fractional_mappings", mode="before")
     @classmethod
     def _blank_map(cls, v: object) -> object:
         return {} if v is None else v  # a bare `exclusions:`-style key loads as None
+
+    @field_validator("categories", mode="before")
+    @classmethod
+    def _blank_categories(cls, v: object) -> object:
+        # A bare entry (`Stocks:`) loads as None.
+        if not isinstance(v, dict):
+            return v
+        return {name: {} if body is None else body for name, body in v.items()}
 
     @field_validator("exclusions", mode="before")
     @classmethod
@@ -184,14 +168,7 @@ class AllocationConfig(BaseModel):
     @field_validator("categories")
     @classmethod
     def _validate_names(cls, v: dict[str, CategoryConfig]) -> dict[str, CategoryConfig]:
-        if len(v) > MAX_CATEGORIES:
-            raise ValueError(f"At most {MAX_CATEGORIES} categories are allowed, got {len(v)}")
-        return _clean_names(v, "Category")
-
-    @field_validator("groups")
-    @classmethod
-    def _validate_group_names(cls, v: dict[str, GroupConfig]) -> dict[str, GroupConfig]:
-        return _clean_names(v, "Group")
+        return _clean_names(v)
 
     @field_validator("direct_mappings")
     @classmethod
@@ -217,27 +194,25 @@ class AllocationConfig(BaseModel):
         return [s.upper() for s in v]
 
     @model_validator(mode="after")
-    def _check_groups(self) -> AllocationConfig:
-        clash = {n.lower() for n in self.groups} & {n.lower() for n in self.categories}
-        if clash:
-            raise ValueError(
-                f"Names are used by both a group and a category (case-insensitive): {sorted(clash)}"
-            )
-        parented = [("Group", n, g.parent) for n, g in self.groups.items()]
-        parented += [("Category", n, c.parent) for n, c in self.categories.items()]
-        for kind, name, parent in parented:
-            if parent is not None and parent not in self.groups:
+    def _check_hierarchy(self) -> AllocationConfig:
+        for name, category in self.categories.items():
+            if category.parent is not None and category.parent not in self.categories:
                 raise ValueError(
-                    f"{kind} '{name}' has unknown parent group '{parent}'. "
-                    f"Defined groups: {list(self.groups)}"
+                    f"Category '{name}' has unknown parent '{category.parent}'. "
+                    f"Defined: {self.category_names}"
                 )
-        for start in self.groups:
-            seen, node = {start}, self.groups[start].parent
+        for start in self.categories:
+            seen, node = {start}, self.categories[start].parent
             while node is not None:
                 if node in seen:
-                    raise ValueError(f"Group parents form a cycle through '{node}'")
+                    raise ValueError(f"Category parents form a cycle through '{node}'")
                 seen.add(node)
-                node = self.groups[node].parent
+                node = self.categories[node].parent
+        if len(self.leaf_names) > MAX_CATEGORIES:
+            raise ValueError(
+                f"At most {MAX_CATEGORIES} categories without sub-categories are allowed, "
+                f"got {len(self.leaf_names)}"
+            )
         return self
 
     @model_validator(mode="after")
@@ -256,21 +231,52 @@ class AllocationConfig(BaseModel):
                 f"Mappings reference unknown categories {sorted(unknown)}. "
                 f"Defined: {self.category_names}"
             )
+        parents = sorted(c for c in used if not self.is_leaf(c))
+        if parents:
+            raise ValueError(
+                f"Mappings reference categories that have sub-categories {parents}; "
+                "securities can only be assigned to categories without sub-categories"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _assign_leaf_colors(self) -> AllocationConfig:
+        """Give each leaf a colour (first unused PALETTE entry); a parent's colour is ignored."""
+        leaves = self.leaf_names
+        used = {c.lower() for n in leaves if (c := self.categories[n].color)}
+        for name, category in self.categories.items():
+            if name not in leaves:
+                category.color = None
+            elif category.color is None:
+                category.color = next(p for p in PALETTE if p not in used)
+                used.add(category.color)
         return self
 
     # ------------------------------------------------------------------ #
-    # Helpers used by the allocation engine                               #
+    # Helpers                                                              #
     # ------------------------------------------------------------------ #
 
     @property
     def category_names(self) -> list[str]:
         return list(self.categories)
 
+    @property
+    def leaf_names(self) -> list[str]:
+        """Categories without sub-categories, in config order: where securities go."""
+        parents = {c.parent for c in self.categories.values()}
+        return [n for n in self.categories if n not in parents]
+
+    def children_of(self, name: str) -> list[str]:
+        return [n for n, c in self.categories.items() if c.parent == name]
+
+    def is_leaf(self, name: str) -> bool:
+        return not self.children_of(name)
+
     def is_excluded(self, symbol: str) -> bool:
         return symbol.upper() in self.exclusions
 
     def weights_for(self, symbol: str) -> dict[str, float]:
-        """{category: weight} for a symbol; a direct mapping is {category: 1.0}.
+        """{leaf category: weight} for a symbol; a direct mapping is {category: 1.0}.
 
         Empty when the symbol is unassigned.
         """
@@ -281,7 +287,7 @@ class AllocationConfig(BaseModel):
             return {self.direct_mappings[sym]: 1.0}
         return {}
 
-    def buy_symbol_for(self, category: str) -> str:
+    def buy_symbol_for(self, category: str) -> str | None:
         return self.categories[category].buy_symbol
 
 

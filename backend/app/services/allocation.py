@@ -2,7 +2,7 @@
 Allocation grouping engine.
 
 Takes a parsed PortfolioSnapshot and an AllocationConfig and produces
-an AllocationBreakdown that groups holdings into the user-defined categories
+an AllocationBreakdown that groups holdings into the user-defined leaf categories
 (in config order; categories with no holdings are included with value 0).
 
 Fractional mappings split a single holding's value across multiple categories
@@ -45,7 +45,7 @@ def compute_allocation(
     AllocationBreakdown
         Per-category values and percentages, plus excluded/unassigned/total summaries.
     """
-    category_values = dict.fromkeys(config.category_names, 0.0)
+    category_values = dict.fromkeys(config.leaf_names, 0.0)
     excluded_value = 0.0
     unassigned_value = 0.0
     unassigned: list[str] = []
