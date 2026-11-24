@@ -31,7 +31,7 @@ export async function uploadPortfolio(file: File): Promise<UploadResponse> {
 
 export async function fetchRebalance(
   allocation: AllocationBreakdown,
-  request: RebalanceRequest
+  request: RebalanceRequest,
 ): Promise<RebalanceResult> {
   const res = await fetch(`${BASE_URL}/api/rebalance`, {
     method: "POST",

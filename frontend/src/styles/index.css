@@ -1,7 +1,13 @@
 /* ============================================================
    Global reset & base
    ============================================================ */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -21,13 +27,20 @@ body {
 }
 
 .app-header {
-  background: #1B3A6B;
+  background: #1b3a6b;
   color: #fff;
   padding: 1.25rem 2rem;
 }
 
-.app-header h1 { font-size: 1.4rem; font-weight: 700; }
-.app-header p  { font-size: 0.85rem; opacity: 0.75; margin-top: 2px; }
+.app-header h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.app-header p {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin-top: 2px;
+}
 
 .app-main {
   max-width: 1200px;
@@ -47,7 +60,9 @@ body {
 }
 
 @media (max-width: 720px) {
-  .top-row { grid-template-columns: 1fr; }
+  .top-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ============================================================
@@ -57,11 +72,19 @@ body {
   background: #fff;
   border-radius: 12px;
   padding: 1.25rem 1.5rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-.card h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.25rem; }
-.hint { font-size: 0.82rem; color: #666; margin-bottom: 0.75rem; }
+.card h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.hint {
+  font-size: 0.82rem;
+  color: #666;
+  margin-bottom: 0.75rem;
+}
 
 /* ============================================================
    Upload
@@ -72,7 +95,9 @@ body {
   padding: 2rem;
   text-align: center;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -81,13 +106,19 @@ body {
   font-size: 0.9rem;
 }
 
-.drop-zone:hover, .drop-zone.drag-over {
+.drop-zone:hover,
+.drop-zone.drag-over {
   background: #f0f5ff;
-  border-color: #1B3A6B;
+  border-color: #1b3a6b;
 }
 
-.drop-icon { font-size: 2rem; }
-.uploading { color: #1B3A6B; font-weight: 600; }
+.drop-icon {
+  font-size: 2rem;
+}
+.uploading {
+  color: #1b3a6b;
+  font-weight: 600;
+}
 
 /* ============================================================
    Error
@@ -105,7 +136,9 @@ body {
 /* ============================================================
    Holdings table
    ============================================================ */
-.table-wrapper { overflow-x: auto; }
+.table-wrapper {
+  overflow-x: auto;
+}
 
 .holdings-table {
   width: 100%;
@@ -123,7 +156,9 @@ body {
   user-select: none;
 }
 
-.holdings-table th:hover { color: #1B3A6B; }
+.holdings-table th:hover {
+  color: #1b3a6b;
+}
 
 .holdings-table td {
   padding: 0.45rem 0.75rem;
@@ -131,17 +166,38 @@ body {
   vertical-align: middle;
 }
 
-.holdings-table tbody tr:hover { background: #f7f9ff; }
-.holdings-table .symbol { font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
-.holdings-table .desc { color: #555; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.holdings-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-.holdings-table .gain { color: #16a34a; }
-.holdings-table .loss { color: #dc2626; }
+.holdings-table tbody tr:hover {
+  background: #f7f9ff;
+}
+.holdings-table .symbol {
+  font-weight: 700;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.holdings-table .desc {
+  color: #555;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.holdings-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.holdings-table .gain {
+  color: #16a34a;
+}
+.holdings-table .loss {
+  color: #dc2626;
+}
 
 /* ============================================================
    Allocation chart
    ============================================================ */
-.allocation-card { min-width: 320px; }
+.allocation-card {
+  min-width: 320px;
+}
 
 .chart-layout {
   display: flex;
@@ -156,10 +212,14 @@ body {
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
-  box-shadow: 0 2px 6px rgba(0,0,0,.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.chart-legend { display: flex; flex-direction: column; gap: 0.6rem; }
+.chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
 
 .legend-row {
   display: flex;
@@ -169,20 +229,36 @@ body {
 }
 
 .legend-dot {
-  width: 12px; height: 12px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.legend-label { flex: 1; font-weight: 600; }
-.legend-pct { font-variant-numeric: tabular-nums; color: #333; min-width: 3.5rem; text-align: right; }
+.legend-label {
+  flex: 1;
+  font-weight: 600;
+}
+.legend-pct {
+  font-variant-numeric: tabular-nums;
+  color: #333;
+  min-width: 3.5rem;
+  text-align: right;
+}
 
-.excluded-note { margin-top: 0.75rem; font-style: italic; }
+.excluded-note {
+  margin-top: 0.75rem;
+  font-style: italic;
+}
 
 /* ============================================================
    Rebalance form
    ============================================================ */
-.rebalance-form { display: flex; flex-direction: column; gap: 0.9rem; }
+.rebalance-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
 
 .form-row {
   display: flex;
@@ -190,7 +266,12 @@ body {
   gap: 0.3rem;
 }
 
-.form-row label, .alloc-row label { font-size: 0.85rem; font-weight: 600; color: #333; }
+.form-row label,
+.alloc-row label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+}
 
 .form-row input {
   padding: 0.45rem 0.65rem;
@@ -206,9 +287,19 @@ fieldset {
   padding: 0.75rem 1rem;
 }
 
-legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; }
+legend {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0 0.25rem;
+  color: #333;
+}
 
-.alloc-inputs { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+.alloc-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
 
 .alloc-row {
   display: flex;
@@ -216,17 +307,36 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   gap: 0.5rem;
 }
 
-.alloc-row label { flex: 1; }
-.alloc-row input { width: 80px; padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; text-align: right; }
-.alloc-row span { font-size: 0.85rem; color: #555; }
+.alloc-row label {
+  flex: 1;
+}
+.alloc-row input {
+  width: 80px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-align: right;
+}
+.alloc-row span {
+  font-size: 0.85rem;
+  color: #555;
+}
 
-.sum-indicator { font-size: 0.82rem; margin-top: 0.4rem; }
-.sum-indicator.ok { color: #16a34a; }
-.sum-indicator.err { color: #dc2626; }
+.sum-indicator {
+  font-size: 0.82rem;
+  margin-top: 0.4rem;
+}
+.sum-indicator.ok {
+  color: #16a34a;
+}
+.sum-indicator.err {
+  color: #dc2626;
+}
 
 .btn-primary {
   padding: 0.6rem 1.25rem;
-  background: #1B3A6B;
+  background: #1b3a6b;
   color: #fff;
   border: none;
   border-radius: 7px;
@@ -237,15 +347,29 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   align-self: flex-start;
 }
 
-.btn-primary:hover:not(:disabled) { background: #16336b; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-primary:hover:not(:disabled) {
+  background: #16336b;
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 /* ============================================================
    Buy guidance
    ============================================================ */
-.guidance-bars { display: flex; flex-direction: column; gap: 1.1rem; margin-top: 0.5rem; }
+.guidance-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  margin-top: 0.5rem;
+}
 
-.guidance-row { display: flex; flex-direction: column; gap: 0.3rem; }
+.guidance-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
 
 .guidance-label {
   display: flex;
@@ -254,8 +378,16 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   font-size: 0.9rem;
 }
 
-.bucket-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.bucket-name { color: #777; font-size: 0.82rem; }
+.bucket-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.bucket-name {
+  color: #777;
+  font-size: 0.82rem;
+}
 
 .guidance-bar-wrap {
   height: 18px;
@@ -277,8 +409,13 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   font-size: 0.88rem;
 }
 
-.buy-dollars { font-weight: 700; font-variant-numeric: tabular-nums; }
-.buy-pct { color: #555; }
+.buy-dollars {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.buy-pct {
+  color: #555;
+}
 
 .guidance-context {
   display: flex;
@@ -301,10 +438,22 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   background: #e5e7eb;
   color: #444;
 }
-.bucket-badge--vti   { background: #dce7f7; color: #1B3A6B; }
-.bucket-badge--vxus  { background: #dcf0fb; color: #1a6a9a; }
-.bucket-badge--bnd   { background: #eef0dc; color: #4a5217; }
-.bucket-badge--excl  { background: #f3f4f6; color: #888; }
+.bucket-badge--vti {
+  background: #dce7f7;
+  color: #1b3a6b;
+}
+.bucket-badge--vxus {
+  background: #dcf0fb;
+  color: #1a6a9a;
+}
+.bucket-badge--bnd {
+  background: #eef0dc;
+  color: #4a5217;
+}
+.bucket-badge--excl {
+  background: #f3f4f6;
+  color: #888;
+}
 
 /* ============================================================
    Chart tooltip tickers
@@ -334,7 +483,12 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   margin-bottom: 0.2rem;
 }
 
-.post-trade-rows { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; }
+.post-trade-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
 
 .post-trade-row {
   display: flex;
@@ -343,7 +497,11 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   font-size: 0.88rem;
 }
 
-.post-trade-label { width: 3.5rem; font-weight: 700; flex-shrink: 0; }
+.post-trade-label {
+  width: 3.5rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 
 .post-trade-bar-wrap {
   flex: 1;
@@ -372,5 +530,16 @@ legend { font-size: 0.85rem; font-weight: 700; padding: 0 0.25rem; color: #333; 
   transform: translateX(-1px);
 }
 
-.post-trade-pct { width: 3.5rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; flex-shrink: 0; }
-.post-trade-target { color: #999; font-size: 0.8rem; white-space: nowrap; flex-shrink: 0; }
+.post-trade-pct {
+  width: 3.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.post-trade-target {
+  color: #999;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

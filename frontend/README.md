@@ -27,4 +27,3 @@ src/
   services/     # API client (api.ts)
   types/        # Shared TypeScript types
 ```
-
