@@ -1,11 +1,15 @@
-import { render, screen, within } from "@testing-library/svelte";
+import { render, screen, waitFor, within } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import PortfolioTable from "./PortfolioTable.svelte";
-import { portfolio } from "../test/fixtures";
-import type { HoldingRow } from "../types";
+import { setAssignment } from "../services/api";
+import { config, portfolio, unassignedHolding } from "../test/fixtures";
+import type { ConfigSummary, HoldingRow } from "../types";
 
-const symbolBucket = { VTI: "VTI", VXUS: "VXUS", BND: "BND", FZROX: "VTI/VXUS", SPAXX: "Excl." };
+// The pills inside the table import the API client.
+vi.mock("../services/api", () => ({ setAssignment: vi.fn() }));
+
+beforeEach(() => vi.resetAllMocks());
 
 function row(symbol: string, overrides: Partial<HoldingRow> = {}): HoldingRow {
   return {
@@ -32,9 +36,13 @@ function symbols(): (string | null)[] {
     .map((r) => within(r).getAllByRole("cell")[0].textContent);
 }
 
-function renderTable(holdings = portfolio.holdings) {
+function renderTable(
+  holdings = portfolio.holdings,
+  cfg: ConfigSummary | null = config,
+  onConfigChange = vi.fn(),
+) {
   return render(PortfolioTable, {
-    props: { holdings, totalValue: portfolio.total_value, symbolBucket },
+    props: { holdings, totalValue: portfolio.total_value, config: cfg, onConfigChange },
   });
 }
 
@@ -95,10 +103,11 @@ describe("PortfolioTable", () => {
     expect(symbols()).toEqual(["BND", "SPAXX", "VTI", "VXUS"]);
   });
 
-  it("leaves the Bucket column unsortable", () => {
+  it("leaves the Category column unsortable", () => {
     renderTable();
-    expect(screen.queryByRole("button", { name: /bucket/i })).toBeNull();
-    expect(screen.getByRole("columnheader", { name: /bucket/i })).not.toHaveAttribute("aria-sort");
+    expect(screen.queryByRole("button", { name: /^category/i })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Category" })).not.toHaveAttribute("aria-sort");
+    expect(screen.queryByRole("columnheader", { name: /bucket/i })).toBeNull();
   });
 
   it("sorts a null gain as the lowest value", async () => {
@@ -137,7 +146,7 @@ describe("PortfolioTable", () => {
       const r = symbolRow(symbol);
       return within(r).getAllByRole("cell");
     };
-    // columns: symbol, bucket, description, quantity, value, gain/loss, %
+    // columns: symbol, category, description, quantity, value, gain/loss, %
     expect(cells("VTI")[5]).toHaveTextContent("+$1,000.00");
     expect(cells("VTI")[5]).toHaveClass("gain");
     expect(cells("VXUS")[5]).toHaveTextContent("-$200.00");
@@ -158,22 +167,45 @@ describe("PortfolioTable", () => {
     expect(cells[6]).toHaveTextContent("9.09%");
   });
 
-  it("labels each holding with a bucket badge", () => {
-    renderTable([
-      ...portfolio.holdings,
-      row("FZROX", { current_value: 1 }),
-      row("MYSTERY", { current_value: 1 }),
-    ]);
-    const badge = (symbol: string) =>
-      symbolRow(symbol).querySelector(".bucket-badge") as HTMLElement;
+  it("shows each holding's category as a pill", () => {
+    renderTable([...portfolio.holdings, row("FZROX", { current_value: 1 }), unassignedHolding]);
+    const pill = (symbol: string) => within(symbolRow(symbol)).getByRole("button");
 
-    expect(badge("VTI")).toHaveTextContent("VTI");
-    expect(badge("VTI")).toHaveClass("bucket-badge--vti");
-    expect(badge("FZROX")).toHaveTextContent("VTI/VXUS");
-    expect(badge("FZROX")).toHaveClass("bucket-badge--vti-vxus");
-    expect(badge("SPAXX")).toHaveTextContent("Excl.");
-    expect(badge("SPAXX")).toHaveClass("bucket-badge--excl");
-    expect(badge("MYSTERY")).toHaveTextContent("—");
-    expect(badge("MYSTERY").className.trim()).toBe("bucket-badge");
+    expect(pill("VTI")).toHaveTextContent("US Stocks");
+    expect(pill("FZROX")).toHaveTextContent("US Stocks 70% · International 30%");
+    expect(pill("SPAXX")).toHaveTextContent("Excluded");
+    expect(pill("MYSTERY")).toHaveTextContent("Unassigned");
+  });
+
+  it("shows a plain dash instead of a pill while config is not loaded", () => {
+    renderTable(portfolio.holdings, null);
+    const cell = within(symbolRow("VTI")).getAllByRole("cell")[1];
+    expect(cell).toHaveTextContent("—");
+    expect(within(cell).queryByRole("button")).toBeNull();
+  });
+
+  it("passes the saved config up through onConfigChange", async () => {
+    const user = userEvent.setup();
+    const updated: ConfigSummary = { ...config, exclusions: [...config.exclusions, "VTI"] };
+    vi.mocked(setAssignment).mockResolvedValue(updated);
+    const onConfigChange = vi.fn();
+    renderTable(portfolio.holdings, config, onConfigChange);
+
+    await user.click(within(symbolRow("VTI")).getByRole("button"));
+    await user.click(screen.getByRole("checkbox", { name: "Exclude from allocation" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(setAssignment).toHaveBeenCalledWith("VTI", { excluded: true });
+    await waitFor(() => expect(onConfigChange).toHaveBeenCalledWith(updated));
+  });
+
+  it("keeps an open editor with its row when the table is re-sorted", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await user.click(within(symbolRow("VTI")).getByRole("button"));
+    await user.click(screen.getByRole("button", { name: /symbol/i }));
+
+    const editor = screen.getByRole("checkbox", { name: "Exclude from allocation" });
+    expect(symbolRow("VTI").contains(editor)).toBe(true);
   });
 });

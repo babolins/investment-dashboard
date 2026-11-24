@@ -1,26 +1,27 @@
 <script lang="ts">
-  import type { HoldingRow } from "../types";
+  import type { ConfigSummary, HoldingRow } from "../types";
+  import AssignmentPill from "./AssignmentPill.svelte";
   import { usd, formatPct, formatGain } from "../lib/format";
-  import { bucketBadgeClass } from "../lib/buckets";
 
   interface Props {
     holdings: HoldingRow[];
     totalValue: number;
-    symbolBucket?: Record<string, string>;
+    config: ConfigSummary | null;
+    onConfigChange: (config: ConfigSummary) => void;
   }
 
   type SortKey = keyof HoldingRow;
   type SortDir = "asc" | "desc";
 
-  let { holdings, totalValue, symbolBucket = {} }: Props = $props();
+  let { holdings, totalValue, config, onConfigChange }: Props = $props();
 
   let sortKey = $state<SortKey>("current_value");
   let sortDir = $state<SortDir>("desc");
 
-  // The Bucket column sits between Symbol and Description and is not sortable.
+  // The Category column sits between Symbol and Description and is not sortable.
   const columns: { key: SortKey | null; label: string }[] = [
     { key: "symbol", label: "Symbol" },
-    { key: null, label: "Bucket" },
+    { key: null, label: "Category" },
     { key: "description", label: "Description" },
     { key: "quantity", label: "Quantity" },
     { key: "current_value", label: "Current Value" },
@@ -79,9 +80,11 @@
           <tr>
             <td class="symbol">{h.symbol}</td>
             <td>
-              <span class={bucketBadgeClass(symbolBucket[h.symbol])}>
-                {symbolBucket[h.symbol] ?? "—"}
-              </span>
+              {#if config}
+                <AssignmentPill symbol={h.symbol} {config} onChange={onConfigChange} />
+              {:else}
+                —
+              {/if}
             </td>
             <td class="desc">{h.description}</td>
             <td class="num">{h.quantity.toLocaleString()}</td>

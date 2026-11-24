@@ -425,37 +425,6 @@ legend {
 }
 
 /* ============================================================
-   Bucket badge (holdings table)
-   ============================================================ */
-.bucket-badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  background: #e5e7eb;
-  color: #444;
-}
-.bucket-badge--vti {
-  background: #dce7f7;
-  color: #1b3a6b;
-}
-.bucket-badge--vxus {
-  background: #dcf0fb;
-  color: #1a6a9a;
-}
-.bucket-badge--bnd {
-  background: #eef0dc;
-  color: #4a5217;
-}
-.bucket-badge--excl {
-  background: #f3f4f6;
-  color: #888;
-}
-
-/* ============================================================
    Chart tooltip tickers
    ============================================================ */
 .tooltip-tickers {

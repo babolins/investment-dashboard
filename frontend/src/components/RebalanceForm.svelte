@@ -1,32 +1,31 @@
 <script lang="ts">
-  import { deriveTargets, inputsFromTarget } from "../lib/targets";
+  import { targetTotal, validateTargets } from "../lib/targets";
   import { fetchRebalance } from "../services/api";
-  import type { AllocationBreakdown, RebalanceResult, TargetAllocation } from "../types";
+  import type { AllocationBreakdown, Category, RebalanceResult } from "../types";
 
   interface Props {
     allocation: AllocationBreakdown;
-    defaultTarget: TargetAllocation | null;
+    categories: Category[];
     onResult: (result: RebalanceResult) => void;
   }
 
-  let { allocation, defaultTarget, onResult }: Props = $props();
+  let { allocation, categories, onResult }: Props = $props();
 
   let amount: number | null = $state(null);
-  let bnd: number | null = $state(null);
-  let vxusOfStocks: number | null = $state(null);
   let loading = $state(false);
   let error: string | null = $state(null);
 
-  // Prefill when the default target loads or changes. The effect only depends on `target`
-  // (assigning bnd/vxusOfStocks adds no dependency), so user edits are never overwritten.
-  // The $derived hop matters: it only notifies when the object identity changes, so
-  // re-renders that touch other props (or reassign the whole props object) don't re-prefill.
-  const target = $derived(defaultTarget);
-  $effect(() => {
-    if (target) ({ bnd, vxusOfStocks } = inputsFromTarget(target));
-  });
-
-  const targets = $derived(deriveTargets({ bnd, vxusOfStocks }));
+  // Only the user's edits are state; each target is `edits[name]` if present, else the
+  // category's default. With no prefill effect there is nothing to clobber when categories
+  // change identity, and new categories simply appear with their defaults.
+  let edits = $state<Record<string, number | null>>({});
+  const targets = $derived(
+    Object.fromEntries(
+      categories.map((c) => [c.name, c.name in edits ? edits[c.name] : c.target]),
+    ) as Record<string, number | null>,
+  );
+  const targetError = $derived(validateTargets(targets));
+  const total = $derived(targetTotal(targets));
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
@@ -36,20 +35,16 @@
       error = "Enter a positive investment amount.";
       return;
     }
-    if (targets.error) {
-      error = targets.error;
+    if (targetError) {
+      error = targetError;
       return;
     }
 
     loading = true;
     try {
-      const { vti, vxus, bnd: bndTarget } = targets;
-      onResult(
-        await fetchRebalance(allocation, {
-          investment_amount: amount,
-          target: { vti, vxus, bnd: bndTarget },
-        }),
-      );
+      // Empty inputs count as 0.
+      const target = Object.fromEntries(Object.entries(targets).map(([k, v]) => [k, v ?? 0]));
+      onResult(await fetchRebalance(allocation, { investment_amount: amount, target }));
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : "Unknown error";
     } finally {
@@ -60,7 +55,7 @@
 
 <div class="card rebalance-card">
   <h2>Rebalance Calculator</h2>
-  <p class="hint">Enter BND as a whole-portfolio target, then VXUS as a share of stocks.</p>
+  <p class="hint">Set a target percentage for each category; they must add up to 100%.</p>
 
   <!-- novalidate: show our inline messages instead of the browser's validation bubbles. -->
   <form onsubmit={handleSubmit} class="rebalance-form" novalidate>
@@ -78,37 +73,26 @@
     </div>
 
     <fieldset>
-      <legend>Inputs (%)</legend>
+      <legend>Targets (%)</legend>
       <div class="alloc-inputs">
-        <div class="alloc-row">
-          <label for="bnd-target">BND (of total portfolio)</label>
-          <input
-            id="bnd-target"
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-            bind:value={bnd}
-            required
-          />
-          <span>%</span>
-        </div>
-        <div class="alloc-row">
-          <label for="vxus-target">VXUS (of stocks only)</label>
-          <input
-            id="vxus-target"
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-            bind:value={vxusOfStocks}
-            required
-          />
-          <span>%</span>
-        </div>
+        {#each categories as c, i (c.name)}
+          {@const id = `target-${i}`}
+          <div class="alloc-row">
+            <label for={id}>{c.name} ({c.buy_symbol})</label>
+            <input
+              {id}
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              bind:value={() => targets[c.name], (v) => (edits[c.name] = v)}
+            />
+            <span>%</span>
+          </div>
+        {/each}
       </div>
-      <p class="sum-indicator" class:ok={!targets.error} class:err={targets.error}>
-        {`Derived Targets: VTI ${targets.vti.toFixed(1)}% · VXUS ${targets.vxus.toFixed(1)}% · BND ${targets.bnd.toFixed(1)}%`}
+      <p class="sum-indicator" class:ok={!targetError} class:err={targetError}>
+        Total: {total.toFixed(1)}%
       </p>
     </fieldset>
 
