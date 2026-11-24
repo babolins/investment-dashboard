@@ -107,34 +107,23 @@ npm run build
 ### Build and start
 
 ```bash
-# Requires backend/config.yaml — copy from the example if needed
-cp backend/config.example.yaml backend/config.yaml
-
 docker compose up -d --build
 ```
 
-The container serves both the API and the built frontend on a single port (default `8000`). There is no separate nginx container.
+The container serves both the API and the built frontend on port `8000`. There is no separate nginx container. No host port is published: the compose network is external, so create it once (`docker network create investment-dashboard`) and point your reverse proxy at `app:8000`.
 
-`backend/config.yaml` is bind-mounted **writable** so category edits made in the UI persist across restarts. It must exist before the first `docker compose up` (otherwise Docker creates a directory in its place).
+On first start, the entrypoint copies the bundled example config to `./etc-investment-dashboard/config.yaml` (or `$CONFIG_VOLUME/config.yaml`) if no config exists there yet. The directory is mounted **writable**, so category edits made in the UI are saved back to that file and persist across container restarts and image updates. You can also edit it by hand.
 
 ### Environment variables
 
 | Variable          | Default                                 | Description                                                                                     |
 | ----------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `PORT`            | `8000`                                  | Host port to bind                                                                               |
 | `CONFIG_PATH`     | `/etc/investment-dashboard/config.yaml` | Path to config inside the container                                                             |
+| `CONFIG_VOLUME`   | `./etc-investment-dashboard`            | Host directory mounted at `/etc/investment-dashboard`                                           |
 | `APP_ENV`         | `production`                            | Application environment                                                                         |
 | `STATIC_DIR`      | _(auto)_                                | Directory of built frontend assets to serve; defaults to the bundled build                      |
 | `VITE_API_URL`    | _(empty)_                               | Set at build time if the API is on a different host; leave empty for same-origin `/api` routing |
 | `COMPOSE_NETWORK` | `investment-dashboard`                  | Docker network name                                                                             |
-
-### Reverse proxy (optional)
-
-The container exposes a single HTTP service on `PORT`. Point a reverse proxy (e.g. Nginx Proxy Manager) directly at it for TLS termination:
-
-```
-app.your-domain  →  app:8000
-```
 
 ### Stop
 
