@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import svelteConfig from "./svelte.config.js";
 
 export default defineConfig([
-  globalIgnores(["dist", "legacy-react"]),
+  globalIgnores(["dist"]),
   js.configs.recommended,
   tseslint.configs.recommended,
   svelte.configs.recommended,

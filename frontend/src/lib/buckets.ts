@@ -1,15 +1,13 @@
-/** Bucket names, colours and the config-derived symbol/label lookups used by the UI. */
+/** Bucket colours and the config-derived symbol/label lookups used by the UI. */
 import type { ConfigSummary } from "../types";
 
-export const BUCKETS = ["VTI", "VXUS", "BND"] as const;
-
-export const BUCKET_COLORS: Record<string, string> = {
+const BUCKET_COLORS: Record<string, string> = {
   VTI: "#1B3A6B",
   VXUS: "#4AACE8",
   BND: "#6B7A23",
 };
 
-export const FALLBACK_COLOR = "#999";
+const FALLBACK_COLOR = "#999";
 
 export function bucketColor(bucket: string): string {
   return Object.hasOwn(BUCKET_COLORS, bucket) ? BUCKET_COLORS[bucket] : FALLBACK_COLOR;

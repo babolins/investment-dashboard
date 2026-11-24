@@ -1,20 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { config } from "../test/fixtures";
-import {
-  BUCKET_COLORS,
-  BUCKETS,
-  FALLBACK_COLOR,
-  bucketBadgeClass,
-  bucketColor,
-  bucketLabelBySymbol,
-  symbolsByBucket,
-} from "./buckets";
-
-describe("BUCKETS", () => {
-  it("lists the three buckets in display order", () => {
-    expect([...BUCKETS]).toEqual(["VTI", "VXUS", "BND"]);
-  });
-});
+import { bucketBadgeClass, bucketColor, bucketLabelBySymbol, symbolsByBucket } from "./buckets";
 
 describe("bucketColor", () => {
   it.each([
@@ -23,12 +9,10 @@ describe("bucketColor", () => {
     ["BND", "#6B7A23"],
   ])("returns the brand colour for %s", (bucket, color) => {
     expect(bucketColor(bucket)).toBe(color);
-    expect(BUCKET_COLORS[bucket]).toBe(color);
   });
 
   it("falls back to grey for unknown buckets", () => {
-    expect(FALLBACK_COLOR).toBe("#999");
-    expect(bucketColor("GOLD")).toBe(FALLBACK_COLOR);
+    expect(bucketColor("GOLD")).toBe("#999");
   });
 });
 
