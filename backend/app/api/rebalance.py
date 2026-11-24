@@ -26,4 +26,6 @@ def rebalance(body: RebalanceAPIRequest) -> RebalanceResult:
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=500, detail=f"Config error: {exc}") from exc
 
-    return compute_rebalance(breakdown=body.to_breakdown(), request=body.to_request(), config=config)
+    return compute_rebalance(
+        breakdown=body.to_breakdown(), request=body.to_request(), config=config
+    )

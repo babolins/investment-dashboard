@@ -2,7 +2,7 @@
 Unit tests for the allocation grouping engine.
 """
 
-import pytest
+from typing import Any
 
 from app.models.config import AllocationConfig
 from app.models.schemas import HoldingRow, PortfolioSnapshot
@@ -24,11 +24,13 @@ def make_snapshot(*holdings: tuple) -> PortfolioSnapshot:
         )
         for sym, val in holdings
     ]
-    return PortfolioSnapshot(holdings=rows, total_value=sum(v for _, v in holdings), total_gain_loss=None)
+    return PortfolioSnapshot(
+        holdings=rows, total_value=sum(v for _, v in holdings), total_gain_loss=None
+    )
 
 
 def make_config(**kwargs) -> AllocationConfig:
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         direct_mappings={"VTI": "VTI", "VXUS": "VXUS", "BND": "BND"},
         fractional_mappings={},
         exclusions=[],

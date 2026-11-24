@@ -5,8 +5,7 @@ All monetary values are in USD. Percentages are expressed as 0-100 (not 0-1).
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-
+from pydantic import BaseModel, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Portfolio / Holdings
@@ -75,12 +74,10 @@ class TargetAllocation(BaseModel):
     bnd: float = Field(..., ge=0, le=100)
 
     @model_validator(mode="after")
-    def weights_sum_to_100(self) -> "TargetAllocation":
+    def weights_sum_to_100(self) -> TargetAllocation:
         total = self.vti + self.vxus + self.bnd
         if abs(total - 100.0) > 0.01:
-            raise ValueError(
-                f"Target allocation weights must sum to 100, got {total:.2f}"
-            )
+            raise ValueError(f"Target allocation weights must sum to 100, got {total:.2f}")
         return self
 
 

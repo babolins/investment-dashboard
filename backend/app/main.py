@@ -13,7 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import holdings, rebalance, config as config_router
+from app.api import config as config_router
+from app.api import holdings, rebalance
 
 logging.basicConfig(level=logging.INFO)
 
@@ -29,9 +30,7 @@ app = FastAPI(
 # so CORS is not required, but the middleware is kept for dev convenience.
 # Override ALLOWED_ORIGINS to restrict origins in production if desired.
 # ---------------------------------------------------------------------------
-_origins_env = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
-)
+_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
 _origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
 
 app.add_middleware(

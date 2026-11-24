@@ -11,7 +11,7 @@ from app.models.schemas import (
     RebalanceRequest,
     TargetAllocation,
 )
-from app.services.rebalance import compute_rebalance, _largest_remainder_round
+from app.services.rebalance import _largest_remainder_round, compute_rebalance
 
 
 def make_breakdown(vti: float, vxus: float, bnd: float, excluded: float = 0) -> AllocationBreakdown:
@@ -70,7 +70,7 @@ def test_buy_percent_sums_near_100():
     req = make_request(2000, 50, 30, 20)
     result = compute_rebalance(bd, req, make_config())
     total_pct = sum(r.buy_percent_of_investment for r in result.recommendations)
-    # May not be exactly 100 if a bucket gets $0, but buy_amounts should sum
+    assert abs(total_pct - 100) < 0.01
     assert abs(result.total_buy_amount - 2000) < 0.02
 
 

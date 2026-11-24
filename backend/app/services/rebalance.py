@@ -41,7 +41,7 @@ def _largest_remainder_round(values: list[float], total: float) -> list[float]:
     (also rounded to 2 dp).
     """
     floored = [round(v, 2) for v in values]
-    remainders = [(v - f, i) for i, (v, f) in enumerate(zip(values, floored))]
+    remainders = [(v - f, i) for i, (v, f) in enumerate(zip(values, floored, strict=True))]
     diff_cents = round((total - sum(floored)) * 100)
     # Add 1 cent to the entries with largest fractional remainder
     for _, i in sorted(remainders, reverse=True)[: int(diff_cents)]:
@@ -106,7 +106,7 @@ def compute_rebalance(
     buckets_ordered = ["VTI", "VXUS", "BND"]
     raw_list = [scaled[b] for b in buckets_ordered]
     rounded_list = _largest_remainder_round(raw_list, inv)
-    rounded_buys = dict(zip(buckets_ordered, rounded_list))
+    rounded_buys = dict(zip(buckets_ordered, rounded_list, strict=True))
 
     recommendations: list[BuyRecommendation] = []
     for bucket in buckets_ordered:

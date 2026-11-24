@@ -2,17 +2,16 @@
 Unit tests for the AllocationConfig YAML schema and loader.
 """
 
-import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
-import yaml
 
 from app.models.config import AllocationConfig, load_config
 
 
 def cfg(**kwargs) -> AllocationConfig:
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         direct_mappings={"VTI": "VTI"},
         fractional_mappings={},
         exclusions=[],

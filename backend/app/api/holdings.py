@@ -27,7 +27,8 @@ async def upload_portfolio(file: UploadFile = File(...)) -> dict:
     if file.content_type and "csv" not in file.content_type and "text" not in file.content_type:
         raise HTTPException(
             status_code=415,
-            detail="Expected a CSV file. Received content-type: " + (file.content_type or "unknown"),
+            detail="Expected a CSV file. Received content-type: "
+            + (file.content_type or "unknown"),
         )
 
     raw = await file.read()

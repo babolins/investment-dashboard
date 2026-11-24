@@ -100,8 +100,7 @@ class AllocationConfig(BaseModel):
             total = sum(mapping.values())
             if abs(total - 1.0) > 1e-6:
                 raise ValueError(
-                    f"Fractional weights for '{symbol}' must sum to 1.0, "
-                    f"got {total:.6f}"
+                    f"Fractional weights for '{symbol}' must sum to 1.0, got {total:.6f}"
                 )
             normalised[symbol.upper()] = mapping
         return normalised
@@ -116,13 +115,11 @@ class AllocationConfig(BaseModel):
     def validate_primary_symbols(cls, v: dict[str, str]) -> dict[str, str]:
         for bucket in _ALLOWED_BUCKETS:
             if bucket not in v:
-                raise ValueError(
-                    f"primary_symbols must include an entry for bucket '{bucket}'"
-                )
+                raise ValueError(f"primary_symbols must include an entry for bucket '{bucket}'")
         return v
 
     @model_validator(mode="after")
-    def no_symbol_in_both_direct_and_fractional(self) -> "AllocationConfig":
+    def no_symbol_in_both_direct_and_fractional(self) -> AllocationConfig:
         overlap = set(self.direct_mappings) & set(self.fractional_mappings)
         if overlap:
             raise ValueError(

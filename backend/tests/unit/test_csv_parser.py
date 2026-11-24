@@ -8,7 +8,6 @@ import pytest
 
 from app.services.csv_parser import parse_fidelity_csv
 
-
 MINIMAL_CSV = textwrap.dedent("""\
     Account Name: My Brokerage
     Account Number: Z12345678
@@ -35,6 +34,7 @@ def test_total_value():
 
 def test_total_gain_loss():
     snap = parse_fidelity_csv(MINIMAL_CSV)
+    assert snap.total_gain_loss is not None
     # 2000 + 500 - 100 = 2400
     assert abs(snap.total_gain_loss - 2400.0) < 0.01
 

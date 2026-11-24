@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 from typing import Any
 
 from app.models.schemas import HoldingRow, PortfolioSnapshot
@@ -61,6 +60,7 @@ _REQUIRED_FIELDS = {"symbol", "quantity", "current_value", "percent_of_account"}
 # ---------------------------------------------------------------------------
 # Numeric helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_number(raw: str) -> float | None:
     """Strip currency symbols, commas, percent signs and convert to float.
@@ -105,6 +105,7 @@ def _is_data_row(row: dict[str, str]) -> bool:
 # Header detection
 # ---------------------------------------------------------------------------
 
+
 def _find_header_row(lines: list[str]) -> int:
     """
     Return the index of the line that contains the CSV column headers.
@@ -112,7 +113,9 @@ def _find_header_row(lines: list[str]) -> int:
     """
     for i, line in enumerate(lines):
         lower = line.lower()
-        if "symbol" in lower and ("quantity" in lower or "shares" in lower or "current value" in lower):
+        if "symbol" in lower and (
+            "quantity" in lower or "shares" in lower or "current value" in lower
+        ):
             return i
     raise ValueError(
         "Could not locate CSV header row. "
@@ -125,6 +128,7 @@ def _find_header_row(lines: list[str]) -> int:
 # ---------------------------------------------------------------------------
 # Public parser
 # ---------------------------------------------------------------------------
+
 
 def parse_fidelity_csv(content: bytes | str) -> PortfolioSnapshot:
     """
