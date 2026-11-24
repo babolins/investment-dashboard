@@ -8,7 +8,7 @@ dependencies = [
     "fastapi>=0.136.1",
     "pydantic>=2.13.3",
     "python-multipart>=0.0.26",
-    "pyyaml>=6.0.3",
+    "ruamel-yaml>=0.19.1",
     "uvicorn>=0.46.0",
 ]
 
