@@ -202,7 +202,8 @@
   select {
     height: 2rem;
     width: 100%;
-    padding: 0 0.45rem;
+    padding: 0 1.8rem 0 0.6rem;
+    background-position: right 0.55rem center;
     border-color: transparent;
     background-color: #f1f2f5;
     font-size: 0.82rem;
