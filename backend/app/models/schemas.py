@@ -5,6 +5,8 @@ All monetary values are in USD. Percentages are expressed as 0-100 (not 0-1).
 
 from __future__ import annotations
 
+from typing import Literal, get_args
+
 from pydantic import BaseModel, Field, model_validator
 
 # ---------------------------------------------------------------------------
@@ -38,13 +40,15 @@ class PortfolioSnapshot(BaseModel):
 # Allocation grouping
 # ---------------------------------------------------------------------------
 
-ALLOWED_BUCKETS = {"VTI", "VXUS", "BND"}
+Bucket = Literal["VTI", "VXUS", "BND"]
+BUCKETS: tuple[Bucket, ...] = get_args(Bucket)  # display order for buy guidance
+ALLOWED_BUCKETS = frozenset(BUCKETS)
 
 
 class AllocationBucket(BaseModel):
     """One row in the grouped allocation breakdown."""
 
-    bucket: str  # 'VTI' | 'VXUS' | 'BND'
+    bucket: Bucket
     current_value: float
     percent_of_included: float  # 0-100, excludes excluded symbols
 
@@ -56,6 +60,13 @@ class AllocationBreakdown(BaseModel):
     included_value: float  # Total portfolio value after exclusions
     excluded_value: float  # Value of excluded symbols (cash, money-market, etc.)
     total_value: float  # included + excluded
+
+
+class UploadResponse(BaseModel):
+    """/api/upload payload: parsed holdings plus allocation breakdown."""
+
+    portfolio: PortfolioSnapshot
+    allocation: AllocationBreakdown
 
 
 # ---------------------------------------------------------------------------
@@ -82,14 +93,16 @@ class TargetAllocation(BaseModel):
 
 
 class RebalanceRequest(BaseModel):
-    investment_amount: float = Field(..., gt=0, description="Cash to invest in USD")
+    investment_amount: float = Field(
+        ..., gt=0, allow_inf_nan=False, description="Cash to invest in USD"
+    )
     target: TargetAllocation
 
 
 class RebalanceAPIRequest(BaseModel):
     """Combined rebalance body — merges RebalanceRequest + AllocationBreakdown fields."""
 
-    investment_amount: float = Field(..., gt=0)
+    investment_amount: float = Field(..., gt=0, allow_inf_nan=False)
     target: TargetAllocation
     buckets: list[AllocationBucket]
     included_value: float
@@ -111,7 +124,7 @@ class RebalanceAPIRequest(BaseModel):
 class BuyRecommendation(BaseModel):
     """Buy guidance for a single ETF bucket."""
 
-    bucket: str  # 'VTI' | 'VXUS' | 'BND'
+    bucket: Bucket
     symbol: str  # Primary purchase symbol from config
     target_percent: float  # 0-100
     current_percent: float  # 0-100, of included portfolio

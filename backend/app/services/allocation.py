@@ -21,7 +21,7 @@ from collections import defaultdict
 
 from app.models.config import AllocationConfig
 from app.models.schemas import (
-    ALLOWED_BUCKETS,
+    BUCKETS,
     AllocationBreakdown,
     AllocationBucket,
     PortfolioSnapshot,
@@ -80,7 +80,7 @@ def compute_allocation(
     total_value = included_value + excluded_value
 
     buckets: list[AllocationBucket] = []
-    for bucket in sorted(ALLOWED_BUCKETS):  # deterministic order
+    for bucket in sorted(BUCKETS):  # deterministic order
         value = bucket_values.get(bucket, 0.0)
         pct = (value / included_value * 100) if included_value > 0 else 0.0
         buckets.append(

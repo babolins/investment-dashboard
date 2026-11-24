@@ -44,8 +44,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.schemas import ALLOWED_BUCKETS, TargetAllocation
 
-_ALLOWED_BUCKETS = ALLOWED_BUCKETS  # {'VTI', 'VXUS', 'BND'}
-
 
 class AllocationConfig(BaseModel):
     """Validated in-memory representation of config.yaml."""
@@ -73,14 +71,25 @@ class AllocationConfig(BaseModel):
     # Validators                                                           #
     # ------------------------------------------------------------------ #
 
+    @field_validator("default_target_allocations", mode="before")
+    @classmethod
+    def normalise_target_keys(cls, v: object) -> object:
+        """Accept VTI/vti/Vti keys; missing buckets count as 0 (sum check follows)."""
+        if not v:  # None / {} -> no default
+            return None
+        if isinstance(v, dict):
+            lowered = {str(k).lower(): val for k, val in v.items()}
+            return {k: lowered.get(k, 0) for k in ("vti", "vxus", "bnd")}
+        return v  # already a TargetAllocation
+
     @field_validator("direct_mappings")
     @classmethod
     def validate_direct_buckets(cls, v: dict[str, str]) -> dict[str, str]:
         for symbol, bucket in v.items():
-            if bucket not in _ALLOWED_BUCKETS:
+            if bucket not in ALLOWED_BUCKETS:
                 raise ValueError(
                     f"Symbol '{symbol}' maps to unknown bucket '{bucket}'. "
-                    f"Allowed: {sorted(_ALLOWED_BUCKETS)}"
+                    f"Allowed: {sorted(ALLOWED_BUCKETS)}"
                 )
         return {s.upper(): b for s, b in v.items()}
 
@@ -92,10 +101,10 @@ class AllocationConfig(BaseModel):
         normalised: dict[str, dict[str, float]] = {}
         for symbol, mapping in v.items():
             for bucket in mapping:
-                if bucket not in _ALLOWED_BUCKETS:
+                if bucket not in ALLOWED_BUCKETS:
                     raise ValueError(
                         f"Fractional mapping for '{symbol}' references unknown "
-                        f"bucket '{bucket}'. Allowed: {sorted(_ALLOWED_BUCKETS)}"
+                        f"bucket '{bucket}'. Allowed: {sorted(ALLOWED_BUCKETS)}"
                     )
             total = sum(mapping.values())
             if abs(total - 1.0) > 1e-6:
@@ -113,7 +122,7 @@ class AllocationConfig(BaseModel):
     @field_validator("primary_symbols")
     @classmethod
     def validate_primary_symbols(cls, v: dict[str, str]) -> dict[str, str]:
-        for bucket in _ALLOWED_BUCKETS:
+        for bucket in ALLOWED_BUCKETS:
             if bucket not in v:
                 raise ValueError(f"primary_symbols must include an entry for bucket '{bucket}'")
         return v
@@ -167,7 +176,8 @@ def load_config(path: Path | None = None) -> AllocationConfig:
     config.yaml does not exist (dev-mode convenience).
 
     Raises FileNotFoundError if neither file is present.
-    Raises ValueError (via Pydantic) if the schema is invalid.
+    Raises ValueError if the file is not valid YAML, is not a mapping, or fails
+    schema validation (Pydantic's ValidationError is a ValueError).
     """
     if path is None:
         config_path_from_env = os.getenv("CONFIG_PATH")
@@ -188,17 +198,10 @@ def load_config(path: Path | None = None) -> AllocationConfig:
                 "or set CONFIG_PATH to a valid file."
             )
 
-    raw = yaml.safe_load(path.read_text())
-    if raw is None:
-        raw = {}
-
-    # Flatten default_target_allocations dict into TargetAllocation if present
-    dta = raw.pop("default_target_allocations", None)
-    config = AllocationConfig(**raw)
-    if dta:
-        config.default_target_allocations = TargetAllocation(
-            vti=dta.get("VTI", dta.get("vti", 0)),
-            vxus=dta.get("VXUS", dta.get("vxus", 0)),
-            bnd=dta.get("BND", dta.get("bnd", 0)),
-        )
-    return config
+    try:
+        raw = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{path} is not valid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path} must contain a YAML mapping at the top level")
+    return AllocationConfig(**raw)

@@ -4,22 +4,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from app.models.config import load_config
+from app.api.deps import ConfigDep
 from app.models.schemas import ConfigSummary
 
 router = APIRouter(tags=["config"])
 
 
 @router.get("/config", response_model=ConfigSummary)
-def get_config() -> ConfigSummary:
+def read_config(cfg: ConfigDep) -> ConfigSummary:
     """Return the active allocation configuration for display in the UI."""
-    try:
-        cfg = load_config()
-    except (FileNotFoundError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
     return ConfigSummary(
         direct_mappings=cfg.direct_mappings,
         fractional_mappings=cfg.fractional_mappings,

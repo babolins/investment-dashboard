@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.models.config import load_config
-from app.models.schemas import AllocationBreakdown, PortfolioSnapshot
+from app.api.deps import ConfigDep
+from app.models.schemas import UploadResponse
 from app.services.allocation import compute_allocation
 from app.services.csv_parser import parse_fidelity_csv
 
@@ -16,8 +16,8 @@ router = APIRouter(tags=["holdings"])
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB guard
 
 
-@router.post("/upload", response_model=dict)
-async def upload_portfolio(file: UploadFile = File(...)) -> dict:
+@router.post("/upload", response_model=UploadResponse)
+async def upload_portfolio(config: ConfigDep, file: UploadFile = File(...)) -> UploadResponse:
     """
     Upload a Fidelity positions CSV.
 
@@ -39,17 +39,9 @@ async def upload_portfolio(file: UploadFile = File(...)) -> dict:
         )
 
     try:
-        snapshot: PortfolioSnapshot = parse_fidelity_csv(raw)
+        snapshot = parse_fidelity_csv(raw)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    try:
-        config = load_config()
-        breakdown: AllocationBreakdown = compute_allocation(snapshot, config)
-    except (FileNotFoundError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail=f"Config error: {exc}") from exc
-
-    return {
-        "portfolio": snapshot.model_dump(),
-        "allocation": breakdown.model_dump(),
-    }
+    breakdown = compute_allocation(snapshot, config)
+    return UploadResponse(portfolio=snapshot, allocation=breakdown)
