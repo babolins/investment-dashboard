@@ -57,11 +57,24 @@ def test_config_summary(client: TestClient):
     response = client.get("/api/config")
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"categories", "assignments", "exclusions"}
+    assert set(body) == {"groups", "categories", "assignments", "exclusions"}
+    assert body["groups"] == []
     assert body["categories"] == [
-        {"name": "US Stocks", "buy_symbol": "VTI", "target": 60, "color": "#2a78d6"},
-        {"name": "International", "buy_symbol": "VXUS", "target": 30, "color": "#eb6834"},
-        {"name": "Bonds", "buy_symbol": "BND", "target": 10, "color": "#1baf7a"},
+        {
+            "name": "US Stocks",
+            "buy_symbol": "VTI",
+            "parent": None,
+            "target": 60,
+            "color": "#2a78d6",
+        },
+        {
+            "name": "International",
+            "buy_symbol": "VXUS",
+            "parent": None,
+            "target": 30,
+            "color": "#eb6834",
+        },
+        {"name": "Bonds", "buy_symbol": "BND", "parent": None, "target": 10, "color": "#1baf7a"},
     ]
     assert body["assignments"] == {
         "VTI": {"US Stocks": 1.0},
@@ -109,7 +122,7 @@ def test_legacy_v1_config_is_persisted_as_v2_on_first_write(tmp_path: Path):
 def test_empty_config_is_served(client: TestClient, config_path: Path, csv_bytes: bytes):
     config_path.write_text('version: "2"\ncategories: {}\n')
     body = client.get("/api/config").json()
-    assert body == {"categories": [], "assignments": {}, "exclusions": []}
+    assert body == {"groups": [], "categories": [], "assignments": {}, "exclusions": []}
     allocation = upload(client, csv_bytes).json()["allocation"]
     assert allocation["categories"] == []
     assert allocation["unassigned_value"] == pytest.approx(24000)
@@ -131,6 +144,7 @@ def test_create_category(client: TestClient, store: ConfigStore, config_path: Pa
         "buy_symbol": "VNQ",
         "target": 5,
         "color": PALETTE[3],
+        "parent": None,
     }
     assert "Real Estate" in store.load().categories
     # Persisted with comments intact.
@@ -653,6 +667,9 @@ def test_config_error_returns_500_on_every_endpoint(
         c.patch("/api/categories/Gold", json={"target": 5}),
         c.delete("/api/categories/Gold"),
         c.put("/api/assignments/AAPL", json={"weights": {}}),
+        c.post("/api/groups", json={"name": "Stocks"}),
+        c.patch("/api/groups/Stocks", json={"target": 5}),
+        c.delete("/api/groups/Stocks"),
     ]
     for response in responses:
         assert response.status_code == 500, response.request.url
@@ -670,6 +687,7 @@ def test_unwritable_config_file_returns_500_on_mutations(client: TestClient, con
             client.post("/api/categories", json={"name": "Gold", "buy_symbol": "GLD"}),
             client.patch("/api/categories/Bonds", json={"target": 5}),
             client.put("/api/assignments/AAPL", json={"weights": {"Bonds": 1}}),
+            client.post("/api/groups", json={"name": "Stocks"}),
         ]
         # Reads still work, and the failed writes changed nothing.
         assert client.get("/api/config").status_code == 200
@@ -679,6 +697,169 @@ def test_unwritable_config_file_returns_500_on_mutations(client: TestClient, con
         assert response.status_code == 500
         assert response.json()["detail"].startswith("Could not save config")
     assert names(client.get("/api/config").json()) == CATEGORY_NAMES
+
+
+# --- groups -----------------------------------------------------------------
+
+
+def group(summary: dict, name: str) -> dict:
+    return next(g for g in summary["groups"] if g["name"] == name)
+
+
+@pytest.fixture
+def grouped(client: TestClient) -> TestClient:
+    """CONFIG_YAML plus Stocks (60) > Foreign (30), with US Stocks in Stocks and
+    International in Foreign."""
+    assert client.post("/api/groups", json={"name": "Stocks", "target": 60}).status_code == 201
+    body = {"name": "Foreign", "parent": "Stocks", "target": 30}
+    assert client.post("/api/groups", json=body).status_code == 201
+    client.patch("/api/categories/US Stocks", json={"parent": "Stocks"})
+    client.patch("/api/categories/International", json={"parent": "Foreign"})
+    return client
+
+
+def test_create_group_returns_summary_and_persists(client: TestClient, config_path: Path):
+    response = client.post("/api/groups", json={"name": " Stocks ", "target": 60})
+    assert response.status_code == 201
+    assert response.json()["groups"] == [{"name": "Stocks", "parent": None, "target": 60}]
+    assert names(response.json()) == CATEGORY_NAMES
+    text = config_path.read_text()
+    assert "keep me: top-of-file comment" in text and "keep me: inline comment" in text
+    assert text.index("groups:") < text.index("categories:")
+    assert client.get("/api/config").json() == response.json()
+
+
+def test_grouped_summary_is_in_config_order(grouped: TestClient):
+    body = grouped.get("/api/config").json()
+    assert body["groups"] == [
+        {"name": "Stocks", "parent": None, "target": 60},
+        {"name": "Foreign", "parent": "Stocks", "target": 30},
+    ]
+    assert summary_category(body, "US Stocks")["parent"] == "Stocks"
+    assert summary_category(body, "International")["parent"] == "Foreign"
+    assert summary_category(body, "Bonds")["parent"] is None
+
+
+@pytest.mark.parametrize(
+    ("body", "status"),
+    [
+        ({"name": "Stocks"}, 409),
+        ({"name": "stocks"}, 409),
+        ({"name": "bonds"}, 409),  # a category's name
+        ({"name": "New", "parent": "Nope"}, 404),
+        ({"name": "New", "parent": "Bonds"}, 404),  # categories are not parents
+        ({"name": ""}, 422),
+        ({"name": "a/b"}, 422),
+        ({"name": "Excluded"}, 422),
+        ({"name": "New", "target": 101}, 422),
+        ({"name": "New", "target": -1}, 422),
+        ({}, 422),
+    ],
+)
+def test_create_group_errors(grouped: TestClient, config_path: Path, body: dict, status: int):
+    before = config_path.read_bytes()
+    assert grouped.post("/api/groups", json=body).status_code == status
+    assert config_path.read_bytes() == before
+
+
+def test_update_group_null_versus_omitted(grouped: TestClient):
+    # omitted parent / target leave them alone
+    body = grouped.patch("/api/groups/Foreign", json={}).json()
+    assert group(body, "Foreign") == {"name": "Foreign", "parent": "Stocks", "target": 30}
+    body = grouped.patch("/api/groups/Foreign", json={"target": 20}).json()
+    assert group(body, "Foreign") == {"name": "Foreign", "parent": "Stocks", "target": 20}
+    # explicit null clears
+    body = grouped.patch("/api/groups/Foreign", json={"target": None}).json()
+    assert group(body, "Foreign") == {"name": "Foreign", "parent": "Stocks", "target": None}
+    body = grouped.patch("/api/groups/Foreign", json={"parent": None}).json()
+    assert group(body, "Foreign") == {"name": "Foreign", "parent": None, "target": None}
+    # name: null is "omitted", not an error
+    assert grouped.patch("/api/groups/Foreign", json={"name": None}).status_code == 200
+
+
+def test_rename_group_cascades_to_children(grouped: TestClient):
+    response = grouped.patch("/api/groups/Stocks", json={"name": "Equities"})
+    assert response.status_code == 200
+    body = response.json()
+    assert [g["name"] for g in body["groups"]] == ["Equities", "Foreign"]
+    assert group(body, "Foreign")["parent"] == "Equities"
+    assert summary_category(body, "US Stocks")["parent"] == "Equities"
+    assert summary_category(body, "International")["parent"] == "Foreign"
+
+
+@pytest.mark.parametrize(
+    ("name", "body", "status"),
+    [
+        ("Stocks", {"parent": "Stocks"}, 409),  # into itself
+        ("Stocks", {"parent": "Foreign"}, 409),  # into a descendant
+        ("Stocks", {"name": "foreign"}, 409),
+        ("Stocks", {"name": "Bonds"}, 409),  # a category's name
+        ("Nope", {"target": 5}, 404),
+        ("Stocks", {"parent": "Nope"}, 404),
+        ("Stocks", {"target": 101}, 422),
+        ("Stocks", {"name": "a/b"}, 422),
+    ],
+)
+def test_update_group_errors(grouped: TestClient, config_path: Path, name, body, status):
+    before = config_path.read_bytes()
+    assert grouped.patch(f"/api/groups/{name}", json=body).status_code == status
+    assert config_path.read_bytes() == before
+
+
+def test_delete_group_reparents_children(grouped: TestClient):
+    response = grouped.delete("/api/groups/Foreign")
+    assert response.status_code == 200
+    body = response.json()
+    assert [g["name"] for g in body["groups"]] == ["Stocks"]
+    assert summary_category(body, "International")["parent"] == "Stocks"
+    assert grouped.get("/api/config").json() == body
+    top = grouped.delete("/api/groups/Stocks").json()
+    assert top["groups"] == []
+    assert all(c["parent"] is None for c in top["categories"])
+    assert grouped.delete("/api/groups/Stocks").status_code == 404
+
+
+def test_update_category_parent_null_versus_omitted(grouped: TestClient):
+    body = grouped.patch("/api/categories/US Stocks", json={"target": 50}).json()
+    assert summary_category(body, "US Stocks")["parent"] == "Stocks"  # omitted: unchanged
+    body = grouped.patch("/api/categories/US Stocks", json={"parent": "Foreign"}).json()
+    assert summary_category(body, "US Stocks")["parent"] == "Foreign"
+    body = grouped.patch("/api/categories/US Stocks", json={"parent": None}).json()
+    assert summary_category(body, "US Stocks")["parent"] is None
+    assert grouped.patch("/api/categories/US Stocks", json={"parent": "Nope"}).status_code == 404
+    assert grouped.patch("/api/categories/US Stocks", json={"parent": "Bonds"}).status_code == 404
+
+
+def test_create_category_in_group_and_rename_keeps_parent(grouped: TestClient):
+    body = {"name": "Gold", "buy_symbol": "GLD", "parent": "Stocks"}
+    created = grouped.post("/api/categories", json=body)
+    assert created.status_code == 201
+    assert summary_category(created.json(), "Gold")["parent"] == "Stocks"
+    renamed = grouped.patch("/api/categories/Gold", json={"name": "Bullion"}).json()
+    assert summary_category(renamed, "Bullion")["parent"] == "Stocks"
+    bad = {"name": "X", "buy_symbol": "X", "parent": "Nope"}
+    assert grouped.post("/api/categories", json=bad).status_code == 404
+    clash = {"name": "foreign", "buy_symbol": "X"}
+    assert grouped.post("/api/categories", json=clash).status_code == 409
+
+
+def test_group_names_are_not_rebalance_targets(grouped: TestClient, csv_bytes: bytes):
+    allocation = upload(grouped, csv_bytes).json()["allocation"]
+    assert [c["category"] for c in allocation["categories"]] == CATEGORY_NAMES
+    ok = grouped.post("/api/rebalance", json=rebalance_body(allocation))
+    assert ok.status_code == 200
+    bad = rebalance_body(allocation, target={"Stocks": 60, "Bonds": 40})
+    assert grouped.post("/api/rebalance", json=bad).status_code == 422
+
+
+def test_cycle_in_hand_edited_config_is_500(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    path = tmp_path / "config.yaml"
+    path.write_text('version: "2"\ngroups:\n  A: {parent: B}\n  B: {parent: A}\ncategories: {}\n')
+    monkeypatch.setenv("CONFIG_PATH", str(path))
+    assert not app.dependency_overrides
+    response = TestClient(app).get("/api/config")
+    assert response.status_code == 500
+    assert response.json()["detail"].startswith("Config error:")
 
 
 # --- round trip -------------------------------------------------------------

@@ -24,7 +24,15 @@ wrong section; emptying a section drops it.  ``_edit_section`` fixes this: it cu
 trailing block off before the edit and re-attaches it to the section's new last entry
 (or to the section key itself when the section ends up empty).  All edits of the four
 sections go through it.  Accepted losses: the comment directly above a deleted entry and
-the end-of-line comment of a deleted entry.
+the end-of-line comment of a deleted entry (also that of a removed ``parent:`` line).
+
+Two more rules follow from the same storage scheme.  A new nested key (``parent``) is
+*inserted* at a fixed position, never appended: appending to the last entry of a section
+would put it after the next banner.  Removing a nested key that may be last goes through
+``_edit_section``.  And the optional ``groups`` section is created lazily by
+``_ensure_groups`` just before ``categories`` (the banner above ``categories`` is moved
+below it), so flat files are never given one by unrelated edits; deleting the last group
+leaves a bare ``groups:`` key.
 """
 
 from __future__ import annotations
@@ -60,7 +68,17 @@ _CATEGORIES_BANNER = """\
 # ---------------------------------------------------------------------------
 # Your allocation categories, in display order (at most 8).  Edit them in the
 # app or here.  buy_symbol: ETF suggested when buying into the category;
-# target: optional default target %; color: assigned automatically.
+# parent: optional group; target: optional default % of the parent group (or
+# of the portfolio at top level); color: assigned automatically.
+"""
+
+_GROUPS_BANNER = """\
+# ---------------------------------------------------------------------------
+# groups
+# ---------------------------------------------------------------------------
+# Optional containers for categories (nestable).  A group's `target`, and the
+# `target` of anything inside it, is a percent of its parent group; top-level
+# items are a percent of the portfolio.  `parent:` names another group.
 """
 
 # Top-level sections that hold collections, and the container type each should have.
@@ -77,11 +95,12 @@ class ConfigError(ValueError):
 
 
 class NotFoundError(ConfigError):
-    """The named category does not exist (HTTP 404)."""
+    """The named category or group (or a ``parent`` group) does not exist (HTTP 404)."""
 
 
 class ConflictError(ConfigError):
-    """Duplicate name, category still in use, or too many categories (HTTP 409)."""
+    """Duplicate name, category still in use, too many categories, or a group moved into itself
+    or one of its own subgroups (HTTP 409)."""
 
 
 class ConfigWriteError(Exception):
@@ -163,9 +182,9 @@ def _blank_emptied_sections(doc: CommentedMap) -> None:
     on the key; a null value has nowhere to put anything and keeps the banner below the key.
     Sections that were already inline (``{}`` / ``[]``) in the file are left as they are.
     """
-    for section in _SECTIONS:
-        container = doc[section]
-        if not container and not container.fa.flow_style():
+    for section in (*_SECTIONS, "groups"):
+        container = doc.get(section)
+        if container is not None and not container and not container.fa.flow_style():
             doc[section] = None
 
 
@@ -177,6 +196,79 @@ def _rename_key(mapping: CommentedMap, old: str, new: str) -> None:
     mapping.insert(position, new, value)
     if comment:
         mapping.ca.items[new] = comment
+        for token in comment:  # keep the gap before an end-of-line comment as the key grows
+            if isinstance(token, CommentToken) and token.start_mark is not None:
+                token.start_mark.column = max(0, token.start_mark.column + len(new) - len(old))
+
+
+def _ensure_groups(doc: CommentedMap) -> None:
+    """Make ``doc["groups"]`` a mapping, creating the section just before ``categories``.
+
+    The comment block above ``categories`` hangs on the previous key; a blank line and the
+    groups banner are appended to it, and the old block is re-hung on the new section key so
+    that ``_edit_section`` carries it below the groups.  If ``categories`` comes first there
+    is nowhere to hang a banner and the section is created without one.
+    """
+    if doc.get("groups") is not None:
+        return
+    if "groups" in doc:  # a bare `groups:` (e.g. left by deleting the last group)
+        doc["groups"] = CommentedMap()
+        return
+    position = list(doc).index("categories")
+    tail = ""
+    if position:
+        items, key, index = _trailing_slot(doc, list(doc)[position - 1])
+        slots = items.setdefault(key, [None] * 4)
+        if slots[index] is None:
+            slots[index] = CommentToken("\n\n" + _GROUPS_BANNER, CommentMark(0), None)
+        else:
+            eol, _, tail = slots[index].value.partition("\n")
+            slots[index].value = eol + "\n\n" + _GROUPS_BANNER
+    doc.insert(position, "groups", CommentedMap())
+    if tail:
+        doc.ca.items["groups"] = [None, None, CommentToken("\n" + tail, CommentMark(0), None), None]
+
+
+def _check_name_free(doc: CommentedMap, name: str, kind: str, ignore: str | None = None) -> None:
+    """Names are unique, ignoring case, across groups and categories (``ignore`` = self)."""
+    taken = {n.lower() for section in ("groups", "categories") for n in (doc.get(section) or {})}
+    if ignore is not None:
+        taken.discard(ignore.lower())  # a case-only rename collides only with itself
+    if name.lower() in taken:
+        raise ConflictError(f"{kind} '{name}' already exists")
+
+
+def _require_group(doc: CommentedMap, name: str) -> None:
+    if name not in (doc.get("groups") or {}):
+        raise NotFoundError(f"Unknown group '{name}'")
+
+
+def _ancestors_or_self(doc: CommentedMap, group: str) -> list[str]:
+    """``group`` and the chain of its parents (guarded against hand-made loops)."""
+    chain: list[str] = []
+    node: str | None = group
+    while node is not None and node not in chain:
+        chain.append(node)
+        entry = doc["groups"].get(node)
+        node = entry.get("parent") if isinstance(entry, CommentedMap) else None
+    return chain
+
+
+def _set_parent(node: CommentedMap, parent: str | None, index: int) -> None:
+    """Set, change or (None) remove a ``parent`` key; a new key is inserted, not appended."""
+    if parent is None:
+        node.pop("parent", None)
+    elif "parent" in node:
+        node["parent"] = parent
+    else:
+        node.insert(min(index, len(node)), "parent", parent)
+
+
+def _group_node(groups: CommentedMap, name: str) -> CommentedMap:
+    """The body of a group; a bare ``Name:`` (null) body becomes an empty mapping first."""
+    if groups[name] is None:
+        groups[name] = CommentedMap()
+    return groups[name]
 
 
 def _to_commented(value: Any) -> Any:
@@ -243,20 +335,25 @@ class ConfigStore:
 
     # -- categories -------------------------------------------------------
 
-    def create_category(self, name: str, buy_symbol: str, target: float | None) -> AllocationConfig:
+    def create_category(
+        self, name: str, buy_symbol: str, target: float | None, parent: str | None = None
+    ) -> AllocationConfig:
         name = name.strip()
 
         def edit(doc: CommentedMap) -> None:
             categories: CommentedMap = doc["categories"]
-            if name.lower() in {n.lower() for n in categories}:
-                raise ConflictError(f"Category '{name}' already exists")
+            _check_name_free(doc, name, "Category")
+            if parent is not None:
+                _require_group(doc, parent)
             if len(categories) >= MAX_CATEGORIES:
                 raise ConflictError(f"At most {MAX_CATEGORIES} categories are allowed")
             used = {str(c["color"]).lower() for c in categories.values()}
             color = next(c for c in PALETTE if c not in used)
-            entry = CommentedMap(
-                buy_symbol=buy_symbol, target=target, color=DoubleQuotedScalarString(color)
-            )
+            entry = CommentedMap(buy_symbol=buy_symbol)
+            if parent is not None:
+                entry["parent"] = parent
+            entry["target"] = target
+            entry["color"] = DoubleQuotedScalarString(color)
             _edit_section(doc, "categories", lambda m: m.__setitem__(name, entry))
 
         return self._mutate(edit)
@@ -268,18 +365,26 @@ class ConfigStore:
         new_name: str | None = None,
         buy_symbol: str | None = None,
         target: float | None | _Unset = UNSET,
+        parent: str | None | _Unset = UNSET,
     ) -> AllocationConfig:
-        """Patch a category; renaming cascades to every mapping that uses it."""
+        """Patch a category (``parent=None`` = top level); renaming cascades to mappings."""
 
         def edit(doc: CommentedMap) -> None:
-            categories: CommentedMap = doc["categories"]
-            if name not in categories:
+            if name not in doc["categories"]:
                 raise NotFoundError(f"Unknown category '{name}'")
-            category = categories[name]
-            if buy_symbol is not None:
-                category["buy_symbol"] = buy_symbol
-            if not isinstance(target, _Unset):
-                category["target"] = target
+            if isinstance(parent, str):
+                _require_group(doc, parent)
+
+            def apply(categories: CommentedMap) -> None:
+                category = categories[name]
+                if buy_symbol is not None:
+                    category["buy_symbol"] = buy_symbol
+                if not isinstance(target, _Unset):
+                    category["target"] = target
+                if not isinstance(parent, _Unset):
+                    _set_parent(category, parent, 1)
+
+            _edit_section(doc, "categories", apply)  # keys may be appended to the last entry
             if new_name is not None and new_name.strip() != name:
                 self._rename(doc, name, new_name.strip())
 
@@ -287,10 +392,7 @@ class ConfigStore:
 
     @staticmethod
     def _rename(doc: CommentedMap, old: str, new: str) -> None:
-        # A case-only rename ("bonds" -> "Bonds") collides only with itself, which is fine.
-        others = {n.lower() for n in doc["categories"] if n != old}
-        if new.lower() in others:
-            raise ConflictError(f"Category '{new}' already exists")
+        _check_name_free(doc, new, "Category", ignore=old)
         _edit_section(doc, "categories", lambda m: _rename_key(m, old, new))
         direct: CommentedMap = doc["direct_mappings"]
         for symbol, category in direct.items():
@@ -311,6 +413,83 @@ class ConfigStore:
                     f"Category '{name}' is still used by: {', '.join(sorted(map(str, users)))}"
                 )
             _edit_section(doc, "categories", lambda m: m.pop(name))
+
+        return self._mutate(edit)
+
+    # -- groups -----------------------------------------------------------
+
+    def create_group(
+        self, name: str, parent: str | None = None, target: float | None = None
+    ) -> AllocationConfig:
+        """Add a group (created lazily: the first one adds the ``groups`` section)."""
+        name = name.strip()
+
+        def edit(doc: CommentedMap) -> None:
+            _check_name_free(doc, name, "Group")
+            if parent is not None:
+                _require_group(doc, parent)
+            entry = CommentedMap()
+            if parent is not None:
+                entry["parent"] = parent
+            if target is not None:
+                entry["target"] = target
+            _ensure_groups(doc)
+            _edit_section(doc, "groups", lambda m: m.__setitem__(name, entry))
+
+        return self._mutate(edit)
+
+    def update_group(
+        self,
+        name: str,
+        *,
+        new_name: str | None = None,
+        parent: str | None | _Unset = UNSET,
+        target: float | None | _Unset = UNSET,
+    ) -> AllocationConfig:
+        """Patch a group (``parent=None`` = top level); a rename updates its children."""
+        new = new_name.strip() if new_name is not None else name
+
+        def edit(doc: CommentedMap) -> None:
+            _require_group(doc, name)
+            if isinstance(parent, str):
+                _require_group(doc, parent)
+                if name in _ancestors_or_self(doc, parent):
+                    raise ConflictError(
+                        f"Cannot move group '{name}' into itself or one of its own subgroups"
+                    )
+            if new != name:
+                _check_name_free(doc, new, "Group", ignore=name)
+
+            def apply(groups: CommentedMap) -> None:
+                node = _group_node(groups, name)
+                if not isinstance(parent, _Unset):
+                    _set_parent(node, parent, 0)
+                if not isinstance(target, _Unset):
+                    node["target"] = target
+                if new != name:
+                    _rename_key(groups, name, new)
+                    _reparent_children(groups, name, new, 0)
+
+            _edit_section(doc, "groups", apply)
+            if new != name:
+                _edit_section(doc, "categories", lambda m: _reparent_children(m, name, new, 1))
+
+        return self._mutate(edit)
+
+    def delete_group(self, name: str) -> AllocationConfig:
+        """Remove a group; its children move up to its parent and keep their targets."""
+
+        def edit(doc: CommentedMap) -> None:
+            _require_group(doc, name)
+            body = doc["groups"][name]
+            up = body.get("parent") if isinstance(body, CommentedMap) else None
+
+            def drop(groups: CommentedMap) -> None:
+                _reparent_children(groups, name, up, 0)
+                groups.pop(name)
+
+            _edit_section(doc, "groups", drop)
+            _edit_section(doc, "categories", lambda m: _reparent_children(m, name, up, 1))
 
         return self._mutate(edit)
 
@@ -359,6 +538,13 @@ class ConfigStore:
     def _add_exclusion(doc: CommentedMap, sym: str) -> None:
         if not any(str(x).upper() == sym for x in doc["exclusions"]):
             _edit_section(doc, "exclusions", lambda s: s.append(sym))
+
+
+def _reparent_children(container: CommentedMap, old: str, new: str | None, index: int) -> None:
+    """Point every entry whose ``parent`` is ``old`` at ``new`` (None = top level)."""
+    for node in container.values():
+        if isinstance(node, CommentedMap) and node.get("parent") == old:
+            _set_parent(node, new, index)
 
 
 def _normalise(weights: dict[str, float]) -> dict[str, float]:

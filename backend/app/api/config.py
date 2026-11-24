@@ -1,5 +1,5 @@
 """
-/api/config, /api/categories, /api/assignments: read and edit the category config.
+/api/config, /api/categories, /api/groups, /api/assignments: read and edit the category config.
 
 Every edit returns the updated ConfigSummary.  Validation lives in the config store;
 its errors become 404/409/422 in the app-level handlers (see app.main).
@@ -17,6 +17,9 @@ from app.models.schemas import (
     CategorySummary,
     CategoryUpdate,
     ConfigSummary,
+    GroupCreate,
+    GroupSummary,
+    GroupUpdate,
 )
 from app.services.config_store import UNSET
 
@@ -32,8 +35,14 @@ def summarize(cfg: AllocationConfig) -> ConfigSummary:
         if symbol not in excluded  # an exclusion wins over a mapping
     }
     return ConfigSummary(
+        groups=[
+            GroupSummary(name=name, parent=g.parent, target=g.target)
+            for name, g in cfg.groups.items()
+        ],
         categories=[
-            CategorySummary(name=name, buy_symbol=c.buy_symbol, target=c.target, color=c.color)
+            CategorySummary(
+                name=name, buy_symbol=c.buy_symbol, parent=c.parent, target=c.target, color=c.color
+            )
             for name, c in cfg.categories.items()
         ],
         assignments=assignments,
@@ -49,21 +58,52 @@ def read_config(cfg: ConfigDep) -> ConfigSummary:
 
 @router.post("/categories", response_model=ConfigSummary, status_code=201)
 def create_category(body: CategoryCreate, store: StoreDep) -> ConfigSummary:
-    return summarize(store.create_category(body.name, body.buy_symbol, body.target))
+    return summarize(store.create_category(body.name, body.buy_symbol, body.target, body.parent))
 
 
 @router.patch("/categories/{name}", response_model=ConfigSummary)
 def update_category(name: str, body: CategoryUpdate, store: StoreDep) -> ConfigSummary:
-    # An explicit `target: null` clears the target; an omitted one leaves it alone.
-    target = body.target if "target" in body.model_fields_set else UNSET
+    # An explicit `target: null` clears the target (`parent: null` = top level); omitted = keep.
+    sent = body.model_fields_set
     return summarize(
-        store.update_category(name, new_name=body.name, buy_symbol=body.buy_symbol, target=target)
+        store.update_category(
+            name,
+            new_name=body.name,
+            buy_symbol=body.buy_symbol,
+            target=body.target if "target" in sent else UNSET,
+            parent=body.parent if "parent" in sent else UNSET,
+        )
     )
 
 
 @router.delete("/categories/{name}", response_model=ConfigSummary)
 def delete_category(name: str, store: StoreDep) -> ConfigSummary:
     return summarize(store.delete_category(name))
+
+
+@router.post("/groups", response_model=ConfigSummary, status_code=201)
+def create_group(body: GroupCreate, store: StoreDep) -> ConfigSummary:
+    return summarize(store.create_group(body.name, body.parent, body.target))
+
+
+@router.patch("/groups/{name}", response_model=ConfigSummary)
+def update_group(name: str, body: GroupUpdate, store: StoreDep) -> ConfigSummary:
+    # Explicit nulls clear `target` / move to the top level; omitted fields are left alone.
+    sent = body.model_fields_set
+    return summarize(
+        store.update_group(
+            name,
+            new_name=body.name,
+            parent=body.parent if "parent" in sent else UNSET,
+            target=body.target if "target" in sent else UNSET,
+        )
+    )
+
+
+@router.delete("/groups/{name}", response_model=ConfigSummary)
+def delete_group(name: str, store: StoreDep) -> ConfigSummary:
+    """Remove a group; its children move up to its parent."""
+    return summarize(store.delete_group(name))
 
 
 @router.put("/assignments/{symbol}", response_model=ConfigSummary)

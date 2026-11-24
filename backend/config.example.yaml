@@ -13,6 +13,18 @@ version: "2"
 #               the rebalance form.  Targets only need to add up to 100 when
 #               you actually rebalance.
 #   color:      assigned automatically; any #rrggbb value works.
+#   parent:     optional name of a group (see below); omitted = top level.
+#
+# Groups (optional) nest categories, e.g. Stocks 60% / Bonds 40%, then within
+# Stocks US 70% / International 30%.  Add a `groups:` section above
+# `categories:` (the app creates it when you add the first group):
+#   groups:
+#     Stocks:
+#       target: 60        # default percent of the parent group
+#       parent: Equity    # optional; another group, never a category
+# A target is always a percent of the item's parent (of the whole portfolio at
+# the top level).  Names are unique across groups and categories, ignoring
+# case.  Holdings are only ever assigned to categories, never to groups.
 categories:
   VTI:
     buy_symbol: VTI

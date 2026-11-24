@@ -5,11 +5,18 @@ File format
 -----------
 version: "2"
 
+# Optional containers for categories, nestable; insertion-ordered.
+groups:
+  Stocks:
+    target: 60          # optional default % of the parent group (top level: of the portfolio)
+    parent: null        # optional name of another group; omitted/null = top level
+
 # Ordered; the key is the display name (max 8, see MAX_CATEGORIES).
 categories:
   US Stocks:
     buy_symbol: VTI     # ETF suggested when buying into this category
-    target: 60          # optional default target % (pre-fills the rebalance form)
+    parent: Stocks      # optional group; holdings are only ever assigned to categories
+    target: 60          # optional default target, % of the parent (pre-fills the rebalance form)
     color: "#2a78d6"    # assigned automatically from PALETTE on creation
 
 # symbol -> category name
@@ -26,7 +33,9 @@ exclusions: [SPAXX]
 Version 1 files (``primary_symbols`` + ``default_target_allocations``, three fixed
 VTI/VXUS/BND buckets) are migrated in memory on load by ``AllocationConfig``; the
 config store persists the v2 form on its first write.  Targets are *not* required to
-sum to 100 here; that is only checked when a rebalance is requested.
+sum to 100 here; that is only checked when a rebalance is requested.  Names are unique
+(ignoring case) across groups *and* categories; groups are not limited in number and
+do not count towards the category cap.
 
 This module only reads: edits (which must keep the user's comments) live in
 ``app.services.config_store``.
@@ -64,10 +73,27 @@ _LEGACY_BUCKETS = {"VTI": "VTI", "VXUS": "VXUS", "BND": "BND"}
 _WEIGHT_TOLERANCE = 1e-6
 
 
+def _strip_parent(v: object) -> object:
+    return v.strip() if isinstance(v, str) else v
+
+
+class GroupConfig(BaseModel):
+    """A container for categories and other groups (the name is the key in ``groups``).
+
+    ``target`` is a percent of the parent group (of the portfolio at the top level).
+    """
+
+    parent: str | None = None
+    target: float | None = Field(default=None, ge=0, le=100)
+
+    _strip_parent = field_validator("parent", mode="before")(_strip_parent)
+
+
 class CategoryConfig(BaseModel):
     """One allocation category (the name is the key in ``AllocationConfig.categories``)."""
 
     buy_symbol: str = Field(pattern=r"^[A-Z0-9.\-]{1,10}$")
+    parent: str | None = None  # a group name; None = top level
     target: float | None = Field(default=None, ge=0, le=100)
     color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
 
@@ -75,6 +101,27 @@ class CategoryConfig(BaseModel):
     @classmethod
     def _normalise_symbol(cls, v: object) -> object:
         return v.strip().upper() if isinstance(v, str) else v
+
+    _strip_parent = field_validator("parent", mode="before")(_strip_parent)
+
+
+def _clean_names[T](mapping: dict[str, T], kind: str) -> dict[str, T]:
+    """Strip keys and enforce the name rules shared by groups and categories."""
+    names: dict[str, T] = {}
+    seen: set[str] = set()
+    for raw, item in mapping.items():
+        name = raw.strip()
+        if not 1 <= len(name) <= MAX_NAME_LENGTH:
+            raise ValueError(f"{kind} name '{raw}' must be 1-{MAX_NAME_LENGTH} characters")
+        if "/" in name:
+            raise ValueError(f"{kind} name '{name}' must not contain '/'")
+        if name.lower() in RESERVED_NAMES:
+            raise ValueError(f"{kind} name '{name}' is reserved")
+        if name.lower() in seen:
+            raise ValueError(f"Duplicate {kind.lower()} name '{name}' (names are case-insensitive)")
+        seen.add(name.lower())
+        names[name] = item
+    return names
 
 
 def _migrate_v1(data: dict[str, Any]) -> dict[str, Any]:
@@ -98,6 +145,7 @@ class AllocationConfig(BaseModel):
     """Validated in-memory representation of config.yaml."""
 
     version: str = "2"
+    groups: dict[str, GroupConfig] = Field(default_factory=dict)  # insertion-ordered
     categories: dict[str, CategoryConfig] = Field(default_factory=dict)  # insertion-ordered
     direct_mappings: dict[str, str] = Field(default_factory=dict)
     fractional_mappings: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -115,6 +163,14 @@ class AllocationConfig(BaseModel):
             return _migrate_v1(data)
         return data
 
+    @field_validator("groups", mode="before")
+    @classmethod
+    def _blank_groups(cls, v: object) -> object:
+        # A bare `groups:` loads as None, and so does a bare entry (`Stocks:`).
+        if not isinstance(v, dict):
+            return {} if v is None else v
+        return {name: {} if group is None else group for name, group in v.items()}
+
     @field_validator("categories", "direct_mappings", "fractional_mappings", mode="before")
     @classmethod
     def _blank_map(cls, v: object) -> object:
@@ -130,21 +186,12 @@ class AllocationConfig(BaseModel):
     def _validate_names(cls, v: dict[str, CategoryConfig]) -> dict[str, CategoryConfig]:
         if len(v) > MAX_CATEGORIES:
             raise ValueError(f"At most {MAX_CATEGORIES} categories are allowed, got {len(v)}")
-        names: dict[str, CategoryConfig] = {}
-        seen: set[str] = set()
-        for raw, category in v.items():
-            name = raw.strip()
-            if not 1 <= len(name) <= MAX_NAME_LENGTH:
-                raise ValueError(f"Category name '{raw}' must be 1-{MAX_NAME_LENGTH} characters")
-            if "/" in name:
-                raise ValueError(f"Category name '{name}' must not contain '/'")
-            if name.lower() in RESERVED_NAMES:
-                raise ValueError(f"Category name '{name}' is reserved")
-            if name.lower() in seen:
-                raise ValueError(f"Duplicate category name '{name}' (names are case-insensitive)")
-            seen.add(name.lower())
-            names[name] = category
-        return names
+        return _clean_names(v, "Category")
+
+    @field_validator("groups")
+    @classmethod
+    def _validate_group_names(cls, v: dict[str, GroupConfig]) -> dict[str, GroupConfig]:
+        return _clean_names(v, "Group")
 
     @field_validator("direct_mappings")
     @classmethod
@@ -168,6 +215,30 @@ class AllocationConfig(BaseModel):
     @classmethod
     def _uppercase_exclusions(cls, v: list[str]) -> list[str]:
         return [s.upper() for s in v]
+
+    @model_validator(mode="after")
+    def _check_groups(self) -> AllocationConfig:
+        clash = {n.lower() for n in self.groups} & {n.lower() for n in self.categories}
+        if clash:
+            raise ValueError(
+                f"Names are used by both a group and a category (case-insensitive): {sorted(clash)}"
+            )
+        parented = [("Group", n, g.parent) for n, g in self.groups.items()]
+        parented += [("Category", n, c.parent) for n, c in self.categories.items()]
+        for kind, name, parent in parented:
+            if parent is not None and parent not in self.groups:
+                raise ValueError(
+                    f"{kind} '{name}' has unknown parent group '{parent}'. "
+                    f"Defined groups: {list(self.groups)}"
+                )
+        for start in self.groups:
+            seen, node = {start}, self.groups[start].parent
+            while node is not None:
+                if node in seen:
+                    raise ValueError(f"Group parents form a cycle through '{node}'")
+                seen.add(node)
+                node = self.groups[node].parent
+        return self
 
     @model_validator(mode="after")
     def _check_references(self) -> AllocationConfig:

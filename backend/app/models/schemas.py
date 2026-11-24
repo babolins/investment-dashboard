@@ -143,9 +143,16 @@ class RebalanceResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class GroupSummary(BaseModel):
+    name: str
+    parent: str | None  # group name; None = top level
+    target: float | None  # default % of the parent (of the portfolio at the top level)
+
+
 class CategorySummary(BaseModel):
     name: str
     buy_symbol: str
+    parent: str | None
     target: float | None
     color: str
 
@@ -153,6 +160,7 @@ class CategorySummary(BaseModel):
 class ConfigSummary(BaseModel):
     """The active config as the UI needs it."""
 
+    groups: list[GroupSummary]  # config order
     categories: list[CategorySummary]  # display order
     assignments: dict[str, dict[str, float]]  # symbol -> {category: weight 0-1}
     exclusions: list[str]
@@ -167,13 +175,31 @@ class CategoryCreate(BaseModel):
     name: str
     buy_symbol: str
     target: _Target = None
+    parent: str | None = None  # group to create it in; omitted/null = top level
 
 
 class CategoryUpdate(BaseModel):
-    """Partial update: omitted fields stay; ``target: null`` clears the default target."""
+    """Partial update: omitted fields stay; ``target: null`` clears the default target and
+    ``parent: null`` moves the category to the top level (``name: null`` is "omitted")."""
 
     name: str | None = None
     buy_symbol: str | None = None
+    target: _Target = None
+    parent: str | None = None
+
+
+class GroupCreate(BaseModel):
+    name: str
+    parent: str | None = None
+    target: _Target = None
+
+
+class GroupUpdate(BaseModel):
+    """Partial update: omitted fields stay; ``parent: null`` = top level, ``target: null``
+    clears the default (``name: null`` is "omitted")."""
+
+    name: str | None = None
+    parent: str | None = None
     target: _Target = None
 
 
