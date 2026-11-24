@@ -6,13 +6,16 @@ import { svelteTesting } from "@testing-library/svelte/vite";
 export default defineConfig({
   plugins: [svelte(), svelteTesting()],
   server: {
+    // Bind IPv4 loopback explicitly. "localhost" can resolve to IPv6 (::1) only — as it does
+    // in the dev container — and VS Code port forwarding connects over IPv4, so the page hangs.
+    host: "127.0.0.1",
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },
       "/health": {
-        target: "http://localhost:8000",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },
     },
