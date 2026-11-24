@@ -127,6 +127,10 @@
   select {
     width: 100%;
   }
+  /* Sit on the inputs' baseline row (the global .btn-primary aligns to the top). */
+  .btn-primary {
+    align-self: end;
+  }
   .error-msg {
     grid-column: 1 / -1;
     margin: 0;
