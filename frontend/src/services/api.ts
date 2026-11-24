@@ -4,6 +4,7 @@ import type {
   AssignmentUpdate,
   CategoryInput,
   ConfigSummary,
+  GroupInput,
   PortfolioSnapshot,
   RebalanceRequest,
   RebalanceResult,
@@ -81,6 +82,18 @@ export function updateCategory(
 
 export function deleteCategory(name: string): Promise<ConfigSummary> {
   return request("DELETE", `/api/categories/${encodeURIComponent(name)}`);
+}
+
+export function createGroup(input: GroupInput): Promise<ConfigSummary> {
+  return request("POST", "/api/groups", input);
+}
+
+export function updateGroup(name: string, patch: Partial<GroupInput>): Promise<ConfigSummary> {
+  return request("PATCH", `/api/groups/${encodeURIComponent(name)}`, patch);
+}
+
+export function deleteGroup(name: string): Promise<ConfigSummary> {
+  return request("DELETE", `/api/groups/${encodeURIComponent(name)}`);
 }
 
 export function setAssignment(symbol: string, update: AssignmentUpdate): Promise<ConfigSummary> {

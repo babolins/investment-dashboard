@@ -27,12 +27,17 @@ describe("colorsByCategory", () => {
   });
 
   it("handles a config with no categories", () => {
-    expect(colorsByCategory({ categories: [], assignments: {}, exclusions: [] })).toEqual({});
+    expect(
+      colorsByCategory({ groups: [], categories: [], assignments: {}, exclusions: [] }),
+    ).toEqual({});
   });
 
   it("copes with a category named like an Object property", () => {
     const c: ConfigSummary = {
-      categories: [{ name: "__proto__", buy_symbol: "X", target: null, color: "#111111" }],
+      groups: [],
+      categories: [
+        { name: "__proto__", buy_symbol: "X", parent: null, target: null, color: "#111111" },
+      ],
       assignments: {},
       exclusions: [],
     };

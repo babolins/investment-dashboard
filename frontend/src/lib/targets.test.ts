@@ -15,8 +15,8 @@ describe("defaultTargets", () => {
 
   it("keeps missing targets as null", () => {
     const cats = [
-      { name: "A", buy_symbol: "AAA", target: null, color: "#111111" },
-      { name: "B", buy_symbol: "BBB", target: 100, color: "#222222" },
+      { name: "A", buy_symbol: "AAA", parent: null, target: null, color: "#111111" },
+      { name: "B", buy_symbol: "BBB", parent: null, target: 100, color: "#222222" },
     ];
     expect(defaultTargets(cats)).toEqual({ A: null, B: 100 });
   });
